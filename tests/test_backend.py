@@ -7,6 +7,7 @@ from __future__ import print_function
 import argparse
 import os
 import sys
+sys.path = ["/home/zhijxu/converter/tensorflow-onnx"] + sys.path
 import tempfile
 import unittest
 from collections import namedtuple
