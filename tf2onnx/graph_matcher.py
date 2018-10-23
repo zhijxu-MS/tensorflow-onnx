@@ -188,6 +188,10 @@ class GraphMatcher(object):
             # print("MATCHING", input_pattern.op_type, input_tensor.type)
             r = self._match_pattern(input_pattern, input_tensor, input_tensor)
             ret.append(r)
+            if op.name == "rnn/while/gru_cell/concat_1":
+                print(input_tensor.name)
+                print(input_tensor.type)
+                print(r)
         return all(ret)
 
     def match_op(self, op):

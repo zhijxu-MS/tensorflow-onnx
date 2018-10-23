@@ -32,6 +32,7 @@ def save_graph(output_names_with_port):
         saver = tf.train.Saver()
         saver.save(sess, r'C:\Users\zhijxu\Desktop\GRU\ckpt')
 
+
 def save_tensorboard_with_graph():
     from tensorflow.python.platform import gfile
 
@@ -73,11 +74,8 @@ class GRUTests(Tf2OnnxBackendTestBase):
 
         input_names_with_port = ["input_1:0"]
         feed_dict = {"input_1:0": x_val}
-
         output_names_with_port = ["output:0", "cell_state:0"]
-        # self.run_test_case(feed_dict, input_names_with_port, output_names_with_port, rtol=1e-06)
-        #save_graph(output_names_with_port)
-        save_tensorboard_with_graph()
+        self.run_test_case(feed_dict, input_names_with_port, output_names_with_port, rtol=1e-06)
 
 
 if __name__ == '__main__':

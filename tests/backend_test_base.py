@@ -120,7 +120,10 @@ class Tf2OnnxBackendTestBase(unittest.TestCase):
             output_dict = []
             for out_name in output_names_with_port:
                 output_dict.append(sess.graph.get_tensor_by_name(out_name))
-
+            tf.train.write_graph(sess.graph, logdir=r'C:\Users\zhijxu\Desktop\GRU', name="readable.pb",
+                                 as_text=True)
+            tf.train.write_graph(sess.graph, logdir=r'C:\Users\zhijxu\Desktop\GRU', name="in-readable.pb",
+                                 as_text=False)
             expected = sess.run(output_dict, feed_dict=feed_dict)
 
         if transform_tf_graph:

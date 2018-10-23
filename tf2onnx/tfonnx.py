@@ -1728,9 +1728,7 @@ def process_tf_graph(tf_graph, continue_on_error=False, verbose=False, target=No
     ops = g.get_nodes()
 
     # pre-processing graph rewrites
-    rewriters = [rewrite_transpose, rewrite_flatten, rewrite_random_uniform,
-                 rewrite_random_normal, rewrite_dropout,
-                 rewrite_single_direction_lstm, rewrite_bi_direction_lstm,
+    rewriters = [
                  rewrite_single_direction_gru]
 
     if custom_rewriter is not None:

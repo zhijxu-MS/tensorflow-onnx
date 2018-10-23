@@ -156,9 +156,9 @@ grucell_pattern = \
                     ]),
                     OpTypePattern("MatMul", inputs=[
                         OpTypePattern("Enter", inputs=[
-                            OpTypePattern("*", name="hidden_kernel")
+                            OpTypePattern("*", name="hidden_kernels")
                         ]),
-                        OpTypePattern("Concat")
+                        OpTypePattern("ConcatV2|Concat")
                     ])
                 ])
             ])
