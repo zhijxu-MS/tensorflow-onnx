@@ -11,13 +11,23 @@ from __future__ import print_function
 from tf2onnx.rewriter.bilstm_rewriter import *
 from tf2onnx.rewriter.lstm_rewriter import *
 from tf2onnx.rewriter.rnn_utils import *
+from tf2onnx.rewriter.gru_rewriter import *
+
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("tf2onnx.rewriter.rnn")
+
 
 def rewrite_single_direction_lstm(g, ops):
     r = LSTMUnitRewriter(g)
     return r.run()
 
+
 def rewrite_bi_direction_lstm(g, ops): 
     return rewrite_bidirectional_lstms(g, ops)
+
+
+def rewrite_single_direction_gru(g, ops):
+    r = GRUUnitRewriter(g)
+    return r.run()
+
