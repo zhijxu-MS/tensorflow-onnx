@@ -80,7 +80,7 @@ class RnnProperties:
 
 # TensorFlow LSTMCell/BasicLSTMCell computation graph matching
 xc_pattern = OpTypePattern('Split', inputs=[
-    OpTypePattern("Const"), # axis for split
+    OpTypePattern("Const"),  # axis for split
     OpTypePattern("BiasAdd", name="bias_add", inputs=[
         OpTypePattern("MatMul", inputs=[
             OpTypePattern("ConcatV2|Concat", name="xh"),
@@ -117,14 +117,63 @@ lstmcell_pattern = \
         ]),
     ])
 
+# input sequence: top to down, left to right
+# split into update gate and reset gate
+gru_split_pattern = \
+    OpTypePattern("Split", inputs=[
+        OpTypePattern("Const"),  # split dim, a constant
+        OpTypePattern("Sigmoid", inputs=[
+            OpTypePattern("BiasAdd", inputs=[
+                OpTypePattern("Enter", inputs=[
+                    OpTypePattern("*", name="gate_bias")
+                ]),
+                OpTypePattern("MatMul", name="update_reset_gate", inputs=[
+                    OpTypePattern("Enter", inputs=[
+                        OpTypePattern("*", name="gate_kernel")
+                    ]),
+                    OpTypePattern("ConcatV2|Concat", name="cell_inputs")
+                ])
+            ])
+        ])
+    ])
+
+
+grucell_pattern = \
+    OpTypePattern("Add", name="Ht", inputs=[
+        OpTypePattern("Mul", inputs=[
+            gru_split_pattern,
+            OpTypePattern("Identity")
+        ]),
+        OpTypePattern("Mul", inputs=[
+            OpTypePattern("Sub", inputs=[
+                OpTypePattern("Const"),  # 1-u
+                gru_split_pattern
+            ]),
+            OpTypePattern("*", name="optional_activation", inputs=[
+                OpTypePattern("BiasAdd", inputs=[
+                    OpTypePattern("Enter", inputs=[
+                        OpTypePattern("*", name="hidden_bias")
+                    ]),
+                    OpTypePattern("MatMul", inputs=[
+                        OpTypePattern("Enter", inputs=[
+                            OpTypePattern("*", name="hidden_kernel")
+                        ]),
+                        OpTypePattern("Concat")
+                    ])
+                ])
+            ])
+        ])
+    ])
+
+
 class RNNUnitType(Enum):
-    LSTMCell = 0 # TF LSTMCell and BasicLSTMCell share the same pattern
+    LSTMCell = 0  # TF LSTMCell and BasicLSTMCell share the same pattern
     GRUCell = 1
 
 
 rnn_cell_patterns = {
     RNNUnitType.LSTMCell: lstmcell_pattern,
-    RNNUnitType.GRUCell: None
+    RNNUnitType.GRUCell: grucell_pattern
 }
 
 
