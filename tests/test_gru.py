@@ -6,6 +6,9 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
+import unittest
+
 from termcolor import cprint
 
 import numpy as np
@@ -52,6 +55,7 @@ def save_tensorboard_with_graph():
 
 
 class GRUTests(Tf2OnnxBackendTestBase):
+    # @unittest.skip("demonstrating skipping")
     def test_single_dynamic_gru(self):
         units = 5
         batch_size = 6
@@ -74,6 +78,53 @@ class GRUTests(Tf2OnnxBackendTestBase):
 
         input_names_with_port = ["input_1:0"]
         feed_dict = {"input_1:0": x_val}
+        output_names_with_port = ["output:0", "cell_state:0"]
+        self.run_test_case(feed_dict, input_names_with_port, output_names_with_port, rtol=1e-06)
+
+    def test_multiple_dynamic_gru_with_parameters(self):
+        units = 5
+        batch_size = 6
+        x_val = np.array([[1., 1.], [2., 2.], [3., 3.], [4., 4.]], dtype=np.float32)
+        x_val = np.stack([x_val] * batch_size)
+
+        x = tf.placeholder(tf.float32, x_val.shape, name="input_1")
+        _ = tf.placeholder(tf.float32, x_val.shape, name="input_2")
+        initializer = init_ops.constant_initializer(0.5)
+
+        lstm_output_list = []
+        lstm_cell_state_list = []
+        if True:
+            # no scope
+            cell = rnn.GRUCell(
+                units,
+                activation=None)
+            outputs, cell_state = tf.nn.dynamic_rnn(
+                cell,
+                x,
+                dtype=tf.float32)
+            lstm_output_list.append(outputs)
+            lstm_cell_state_list.append(cell_state)
+
+        if True:
+            # given scope
+            cell = rnn.GRUCell(
+                units,
+                activation=None)
+            with variable_scope.variable_scope("root1") as scope:
+                outputs, cell_state = tf.nn.dynamic_rnn(
+                    cell,
+                    x,
+                    dtype=tf.float32,
+                    sequence_length=[4, 4, 4, 4, 4, 4],
+                    scope=scope)
+            lstm_output_list.append(outputs)
+            lstm_cell_state_list.append(cell_state)
+
+        _ = tf.identity(lstm_output_list, name="output")
+        _ = tf.identity(lstm_cell_state_list, name="cell_state")
+
+        feed_dict = {"input_1:0": x_val}
+        input_names_with_port = ["input_1:0"]
         output_names_with_port = ["output:0", "cell_state:0"]
         self.run_test_case(feed_dict, input_names_with_port, output_names_with_port, rtol=1e-06)
 
