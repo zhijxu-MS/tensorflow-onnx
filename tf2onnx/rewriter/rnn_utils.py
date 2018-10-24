@@ -139,7 +139,7 @@ gru_split_pattern = \
 
 
 grucell_pattern = \
-    OpTypePattern("Add", name="Ht", inputs=[
+    OpTypePattern("Add", name="cell_output", inputs=[
         OpTypePattern("Mul", inputs=[
             gru_split_pattern,
             OpTypePattern("Identity")

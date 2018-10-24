@@ -31,7 +31,14 @@ class GRUUnitRewriter(UnitRewriterBase):
         raise ValueError("not implemented")
 
     def get_rnn_scope_name(self, match):
-        raise ValueError("not implemented")
+        # take the cell output and go up 3 levels to find the scope:
+        # name of h is like root/while/gru_cell/mul_2
+        # root is the dynamic rnn's scope name.
+        # root/while/gru_cell is cell's scope name
+        h_node = match.get_op("cell_output")
+        parts = h_node.name.split('/')
+        rnn_scope_name = '/'.join(parts[0:-3])
+        return rnn_scope_name
 
     def get_weight_and_bias(self, match):
         raise ValueError("not implemented")
