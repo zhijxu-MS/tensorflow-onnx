@@ -384,5 +384,34 @@ class UnitRewriterBase:
         self.g.replace_all_inputs(self.g.get_nodes(), node.output[0], new_trans.output[0])
         return new_trans
 
+    def _workaround_fill_ch_init_node(self, initializer_input_id, rnn_props):
+        # copy from  lstm_rewriter
+        node = self.g.get_node_by_name(initializer_input_id)
+        if node.type != "Fill":
+            return
+
+        self.must_keep_nodes.remove(node)
+
+        fill_val = node.inputs[1].get_tensor_value()[0]
+        fill_val_dtype = utils.ONNX_TO_NUMPY_DTYPE[node.inputs[1].dtype]
+
+        # this must be int64, since Concat's input data type must be consistent.
+        num_direction_node = self.g.make_const(utils.make_name("Const"), np.array([1], dtype=np.float32))
+        h_node = self.g.make_const(utils.make_name("Const"), np.array([rnn_props.hidden_size], dtype=np.float32))
+        b_node = rnn_props.batch_size_node
+        # Concat in OPSET7 does not support int64.
+        tile_shape = make_onnx_node(self.g, "Concat",
+                                    [num_direction_node.output[0], b_node.output[0], h_node.output[0]],
+                                    attr={"axis": 0})
+
+        # Tile's repeats must be INT64
+        attr = {"to": onnx_pb.TensorProto.INT64}
+        tile_shape_int64 = make_onnx_node(self.g, 'Cast', [tile_shape.output[0]], attr)
+
+        const_node = self.g.make_const(utils.make_name("Const"), np.array([[[fill_val]]], dtype=fill_val_dtype))
+        tile_node = make_onnx_node(self.g, 'Tile', [const_node.output[0], tile_shape_int64.output[0]])
+        self.all_nodes.extend([tile_shape, tile_shape_int64, tile_node])
+        return tile_node
+
 
 

@@ -144,8 +144,31 @@ class GRUUnitRewriter(UnitRewriterBase):
         rnn_props.onnx_input_ids["B"] = b_node.output[0]
 
     def process_var_init_nodes(self, rnn_props):
-        raise ValueError("not implemented")
+        assert "state" in rnn_props.var_initializers.keys()
+        found_node_id = rnn_props.var_initializers["state"]
+        init_state_id = self._process_init_nodes(found_node_id, rnn_props)
+        rnn_props.onnx_input_ids["initial_state"] = init_state_id
 
+    def _process_init_nodes(self, initializer_input_id, rnn_props):
+        # copy from  lstm_rewriter
+        # todo: remove this once Fill ops is supported
+        fill_ch_init_node = self._workaround_fill_ch_init_node(initializer_input_id, rnn_props)
+        if fill_ch_init_node:
+            return fill_ch_init_node.output[0]
+
+        node = self.g.get_node_by_name(initializer_input_id)
+        self.must_keep_nodes.append(node)
+        if node.is_const():
+            val = node.get_tensor_value()
+            initial_name = utils.make_name("Const")
+            new_val = np.expand_dims(val, axis=0)
+            const_node = self.g.make_const(initial_name, new_val)
+            return const_node.output[0]
+        else:
+            squeeze_node = make_onnx_node(self.g, "Unsqueeze", [initializer_input_id], attr={"axes": [0]})
+            self.g.replace_all_inputs(self.g.get_nodes(), initializer_input_id, squeeze_node.output[0])
+            self.all_nodes.append(squeeze_node)
+            return squeeze_node.output[0]
 
     def create_rnn_node(self, rnn_props):
         raise ValueError("not implemented")
