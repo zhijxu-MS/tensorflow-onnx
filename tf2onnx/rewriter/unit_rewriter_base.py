@@ -177,6 +177,12 @@ class UnitRewriterBase:
         return rnn_props
 
     def get_var_initializers(self, match, rnn_props, rnn_scope_name):
+        """
+        initializer op can be found by tracing from switch mode. while rnn has multiple switch nodes
+        so have to discriminate them by a check
+
+        switch nodes can be found by tracing LoopCond
+        """
         loop_cond_op = None
         for n in self.g.get_nodes():
             if n.type == 'LoopCond' and n.name.startswith(rnn_scope_name):

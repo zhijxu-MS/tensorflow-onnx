@@ -19,18 +19,15 @@ log = logging.getLogger("tf2onnx.rewriter.gru_rewriter")
 class GRUUnitRewriter(UnitRewriterBase):
     def __init__(self, g):
         super(GRUUnitRewriter, self).__init__(g)
+        self.switch_checkers = {
+            # True means we need parse its initial value in later logic.
+            # in tensorflow, switch is a good op that we can use to trace other ops that needed
+            "state": (self._state_switch_check, self._connect_gru_state_to_graph, True),
+            "output": (self._output_switch_check, self._connect_gru_output_to_graph, False),
+        }
 
     def run(self):
         return super(GRUUnitRewriter, self).run(RNNUnitType.GRUCell)
-
-    def _ht_switch_check(self, enter_target_node_input_id, identity_consumers, match):
-        raise ValueError("not implemented")
-
-    def _output_switch_check(self, enter_target_node_input_id, identity_consumers, match):
-        raise ValueError("not implemented")
-
-    def process_weights_and_bias(self, rnn_weights):
-        raise ValueError("not implemented")
 
     def get_rnn_scope_name(self, match):
         # take the cell output and go up 3 levels to find the scope:
@@ -57,6 +54,28 @@ class GRUUnitRewriter(UnitRewriterBase):
                    "hidden_kernel": hidden_kernel,
                    "hidden_bias": hidden_bias}
             return res
+
+    @staticmethod
+    def _state_switch_check(enter_target_node_input_id, identity_consumers, match):
+        concat_nodes = [c for c in identity_consumers if c == match.get_op("cell_inputs")]
+        if len(concat_nodes) == 1:
+            log.debug("find state initializer value at " + enter_target_node_input_id)
+            return enter_target_node_input_id
+        else:
+            log.debug(str(len(concat_nodes)) + "Concat matching found, cannot identify state initializer")
+            return None
+
+    def _connect_gru_state_to_graph(self):
+        pass
+
+    def _output_switch_check(self, enter_target_node_input_id, identity_consumers, match):
+        raise ValueError("not implemented")
+
+    def _connect_gru_output_to_graph(self):
+        pass
+
+    def process_weights_and_bias(self, rnn_weights):
+        raise ValueError("not implemented")
 
     def process_input_x(self, rnn_props, rnn_scope_name):
         raise ValueError("not implemented")
