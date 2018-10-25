@@ -74,6 +74,21 @@ class GRUUnitRewriter(UnitRewriterBase):
     def _connect_gru_output_to_graph(self):
         pass
 
+    def get_rnn_input_blacklist(self, rnn_weights, rnn_props):
+        var_init_nodes = []
+        for _, init_input_id in rnn_props.var_initializers.items():
+            init_node = self.g.get_node_by_name(init_input_id)
+            var_init_nodes.append(init_node)
+            self.must_keep_nodes.append(init_node)
+        blacklist_inputs = []
+        blacklist_inputs.extend(var_init_nodes)
+        # weight/bias inputs, and c/h initializer are dynamic_rnn/LSTMCell's parameters.
+        # we will use them to filter out the dynamic_rnn's input tensor.
+        for _, value in rnn_weights.items():
+            blacklist_inputs.append(value.node)
+
+        return blacklist_inputs
+
     def process_weights_and_bias(self, rnn_weights):
         raise ValueError("not implemented")
 

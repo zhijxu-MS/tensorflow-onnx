@@ -107,6 +107,9 @@ class UnitRewriterBase:
             return REWRITER_RESULT.SKIP
 
         seq_len_input_node = self.find_sequence_length_node(rnn_scope_name)
+        # the method used to find input is: node itself is in rnn name scope
+        # and its input name is not in rnn scope, then the input name is input_id
+        # while will have multiple nodes fit the case, so we create a blacklist to filter them out
         input_filter = self.get_rnn_input_blacklist(rnn_weights, rnn_props)
         if seq_len_input_node:
             input_filter.append(seq_len_input_node)
