@@ -82,7 +82,7 @@ class GRUUnitRewriter(UnitRewriterBase):
             self.must_keep_nodes.append(init_node)
         blacklist_inputs = []
         blacklist_inputs.extend(var_init_nodes)
-        # weight/bias inputs, and c/h initializer are dynamic_rnn/LSTMCell's parameters.
+        # weight/bias inputs, and c/h initializer are dynamic_rnn/GRUCell's parameters.
         # we will use them to filter out the dynamic_rnn's input tensor.
         for _, value in rnn_weights.items():
             blacklist_inputs.append(value.node)
@@ -171,4 +171,24 @@ class GRUUnitRewriter(UnitRewriterBase):
             return squeeze_node.output[0]
 
     def create_rnn_node(self, rnn_props):
-        raise ValueError("not implemented")
+        # specify if the RNN is forward, reverse, or bidirectional.
+        # Must be one of forward (default), reverse, or bidirectional.
+        # Here we won't mark bidirectional/reverse, we will have another rewriter running after this one,
+        # which will based on patterns to combine a forward GRU and a backward GRU into a bidirectional one.
+        direction = "forward"
+        num_direction = 1
+        # todo: input_forget
+        attr = {"direction": direction, "hidden_size": rnn_props.hidden_size}
+        inputs = rnn_props.onnx_input_ids
+        gru_inputs = [
+            inputs["X"], inputs["W"], inputs["R"], inputs["B"],
+            inputs["sequence_lens"], inputs["initial_state"]]
+        gru_node = make_onnx_node(self.g, "GRU", gru_inputs, attr, 3)
+
+        x_shape = self.g.get_shape(gru_node.input[0])
+        x_seq_length = x_shape[0]
+        x_batch_size = x_shape[1]
+        self.g.set_shape(gru_node.output[0], [x_seq_length, num_direction, x_batch_size, rnn_props.hidden_size])
+        self.g.set_shape(gru_node.output[1], [num_direction, x_batch_size, rnn_props.hidden_size])
+        self.g.copy_shape(gru_node.output[1], gru_node.output[2])
+        return gru_node
