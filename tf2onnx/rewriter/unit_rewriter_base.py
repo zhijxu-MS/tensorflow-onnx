@@ -79,8 +79,38 @@ class UnitRewriterBase:
     def process_var_init_nodes(self, rnn_props):
         pass
 
-    def process_seq_length(self, rnn_props, seq_len_input_node):
-        pass
+    def process_seq_length(self, rnn_props, seq_length_node):
+        # output: [time step, batch size, input size]
+        shape_node = make_onnx_node(self.g, "Shape", [rnn_props.x_input_id])
+
+        # LSTMCell only allow inputs of [batch size, input_size], so we assume dynamic_rnn has 3 dims.
+        # Slice cannot support Int64 in OPSET 7, so we cast here.
+        attr = {"to": onnx_pb.TensorProto.FLOAT}
+        cast_shape_node = make_onnx_node(self.g, "Cast", [shape_node.output[0]], attr)
+        self.g.copy_shape(shape_node.output[0], cast_shape_node.output[0])
+
+        attr = {"axes": [0], "starts": [1], "ends": [2]}
+        batchsize_node = make_onnx_node(self.g, "Slice", [cast_shape_node.output[0]], attr)
+
+        # Tile's repeats must be INT64
+        attr = {"to": onnx_pb.TensorProto.INT64}
+        repeat_node = make_onnx_node(self.g, 'Cast', [batchsize_node.output[0]], attr)
+
+        self.all_nodes.extend([shape_node, cast_shape_node, batchsize_node, repeat_node])
+
+        if not seq_length_node:
+            attr = {"axes": [0], "starts": [0], "ends": [1]}
+            timestep_node = make_onnx_node(self.g, 'Slice', [cast_shape_node.output[0]], attr)
+
+            tile_node = make_onnx_node(self.g, 'Tile', [timestep_node.output[0], repeat_node.output[0]])
+
+            attr = {"to": onnx_pb.TensorProto.INT32}  # LSTM sequence_lens needs to be int32
+            seq_length_node = make_onnx_node(self.g, 'Cast', [tile_node.output[0]], attr)
+
+            self.all_nodes.extend([timestep_node, tile_node, seq_length_node])
+
+        rnn_props.onnx_input_ids["sequence_lens"] = seq_length_node.output[0]
+        return seq_length_node, batchsize_node
 
     def create_rnn_node(self, rnn_props):
         pass

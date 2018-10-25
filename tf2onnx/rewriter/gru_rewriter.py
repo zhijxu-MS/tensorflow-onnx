@@ -146,8 +146,6 @@ class GRUUnitRewriter(UnitRewriterBase):
     def process_var_init_nodes(self, rnn_props):
         raise ValueError("not implemented")
 
-    def process_seq_length(self, rnn_props, seq_len_input_node):
-        raise ValueError("not implemented")
 
     def create_rnn_node(self, rnn_props):
         raise ValueError("not implemented")
