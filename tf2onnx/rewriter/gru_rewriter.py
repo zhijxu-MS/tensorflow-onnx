@@ -8,6 +8,8 @@ tf2onnx.rewriter.gru_rewriter - gru support
 from __future__ import division
 from __future__ import print_function
 
+import sys
+
 from tf2onnx.rewriter.unit_rewriter_base import *
 
 logging.basicConfig(level=logging.INFO)
@@ -41,7 +43,20 @@ class GRUUnitRewriter(UnitRewriterBase):
         return rnn_scope_name
 
     def get_weight_and_bias(self, match):
-        raise ValueError("not implemented")
+        gate_kernel = get_weights_from_const_node(match.get_op("gate_kernel"))
+        gate_bias = get_weights_from_const_node(match.get_op("gate_bias"))
+        hidden_kernel = get_weights_from_const_node(match.get_op("hidden_kernel"))
+        hidden_bias = get_weights_from_const_node(match.get_op("hidden_bias"))
+        if not all([gate_kernel, gate_bias, hidden_kernel, hidden_bias]):
+            log.error("rnn weights check failed, skip")
+            sys.exit(-1)
+        else:
+            log.debug("find needed weights")
+            res = {'gate_kernel': gate_kernel,
+                   "gate_bias": gate_bias,
+                   "hidden_kernel": hidden_kernel,
+                   "hidden_bias": hidden_bias}
+            return res
 
     def process_input_x(self, rnn_props, rnn_scope_name):
         raise ValueError("not implemented")
