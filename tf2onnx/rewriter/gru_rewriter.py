@@ -89,8 +89,59 @@ class GRUUnitRewriter(UnitRewriterBase):
 
         return blacklist_inputs
 
-    def process_weights_and_bias(self, rnn_weights):
-        raise ValueError("not implemented")
+    def process_weights_and_bias(self, rnn_weights, rnn_props):
+        """
+        why split the data in this way should refer to code of tensorflow GRU cell and official document of ONNX GRU
+        """
+        # from code of tensorflow GRU cell, it can be known that shape of hidden_kernel(or candidate_kernel)
+        # is (input_size+hidden_unit, hidden_unit)
+        hidden_size = rnn_weights["hidden_kernel"].value.shape[1]
+        input_size = rnn_weights["hidden_kernel"].value.shape[0] - hidden_size
+        weight_dtype = rnn_weights["hidden_kernel"].dtype
+        bias_dtype = rnn_weights["hidden_bias"].dtype
+        # below code will use same notation as ONNX document
+        # z means update gate, r means reset gate, h means hidden gate;
+        # at this time weights of gate include input and state, will split it next
+        r_kernel, z_kernel = np.split(rnn_weights["gate_kernel"].value, [hidden_size], axis=1)
+        h_kernel = rnn_weights["hidden_kernel"].value
+        r_bias, z_bias = np.split(rnn_weights["gate_bias"].value, [hidden_size], axis=0)
+        h_bias = rnn_weights["hidden_bias"].value
+        # ONNX GRU split weights of input and state, so have to split *_kernel
+        input_r_kernel, state_r_kernel = np.split(r_kernel, [input_size], axis=0)
+        input_z_kernel, state_z_kernel = np.split(z_kernel, [input_size], axis=0)
+        input_h_kernel, state_h_kernel = np.split(h_kernel, [input_size], axis=0)
+        W_zrh = np.concatenate((input_z_kernel, input_r_kernel, input_h_kernel), axis=1)
+        R_zrh = np.concatenate((state_z_kernel, state_r_kernel, state_h_kernel), axis=1)
+        # transpose weight matrix
+        W_zrh = np.transpose(np.expand_dims(W_zrh, axis=0), axes=(0, 2, 1))
+        R_zrh = np.transpose(np.expand_dims(R_zrh, axis=0), axes=(0, 2, 1))
+        W_zrh = W_zrh.astype(weight_dtype)
+        R_zrh = R_zrh.astype(weight_dtype)
+        assert W_zrh.shape == (1, 3*hidden_size, input_size)
+        assert R_zrh.shape == (1, 3*hidden_size, hidden_size)
+        Wb_zrh = np.concatenate((z_bias, r_bias, h_bias), axis=0)
+        # tf don't have bias for state, so use 0 instead
+        zero = np.zeros_like(z_bias)
+        Rb_zrh = np.concatenate((zero, zero, zero), axis=0)
+        B_zrh = np.concatenate((Wb_zrh, Rb_zrh), axis=0)
+        B_zrh = np.expand_dims(B_zrh, axis=0)
+        B_zrh = B_zrh.astype(bias_dtype)
+        assert B_zrh.shape == (1, 6*hidden_size)
+        # create const ONNX node
+        w_name = utils.make_name("W")
+        w_node = self.g.make_const(w_name, W_zrh, skip_conversion=True)
+
+        r_name = utils.make_name("R")
+        r_node = self.g.make_const(r_name, R_zrh, skip_conversion=True)
+
+        b_name = utils.make_name("B")
+        b_node = self.g.make_const(b_name, B_zrh, skip_conversion=True)
+
+        rnn_props.input_size = input_size
+        rnn_props.hidden_size = hidden_size
+        rnn_props.onnx_input_ids["W"] = w_node.output[0]
+        rnn_props.onnx_input_ids["R"] = r_node.output[0]
+        rnn_props.onnx_input_ids["B"] = b_node.output[0]
 
     def process_var_init_nodes(self, rnn_props):
         raise ValueError("not implemented")
