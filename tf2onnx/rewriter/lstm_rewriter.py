@@ -129,56 +129,6 @@ class LSTMUnitRewriter(UnitRewriterBase):
         log.debug(str(len(ta_write_nodes)) + " TensorArrayWriteV3 matching found, cannot validate output switch")
         return None
 
-    def process_input_x(self, rnn_props, rnn_scope_name):
-        self.print_step("look for possible transpose following RNN input node")
-        # todo: peepholdes P is not considered now
-        input_consumers = self.g.find_output_consumers(rnn_props.input_id)
-        consumers_in_rnn_scope = []
-        for consumer in input_consumers:
-            if consumer.name.startswith(rnn_scope_name):
-                consumers_in_rnn_scope.append(consumer)
-
-        if len(consumers_in_rnn_scope) != 1:
-            log.error("RNN input node has " + str(len(consumers_in_rnn_scope)) +
-                      " consumers in current rnn scope " + rnn_scope_name + ", skip")
-            return None
-
-        possible_transpose_after_input = consumers_in_rnn_scope[0]
-
-        self.print_step("convert the transpose to onnx node if there is one found.")
-        # check whether time_major is enabled or not
-        # in TF, if time_major is not enabled, input format is [batch, time, ...]
-        # but, during TF handling, at the beginning, the data will be transposed to [time, batch, ...]
-        # after processing, the format is changed back before returning result.
-        # So here, we judge the time_major by checking the transpose operator existence.
-        converted_transpose = self._convert_timemajor_transpose(possible_transpose_after_input)
-        if converted_transpose:
-            log.debug("detect batch-major inputs")
-            rnn_props.time_major = False
-            rnn_props.x_input_id = converted_transpose.output[0]
-            self.all_nodes.extend([converted_transpose])
-        else:
-            log.debug("detect timer-major inputs")
-            rnn_props.time_major = True
-            rnn_props.x_input_id = rnn_props.input_id
-
-        rnn_props.onnx_input_ids["X"] = rnn_props.x_input_id
-        return rnn_props
-
-    def _convert_timemajor_transpose(self, node):
-        if not check_is_timemajor_transpose(node):
-            log.debug("not found timemajor transpose")
-            return
-
-        log.debug("found timemajor transpose")
-
-        attr = {"perm": np.array([1, 0, 2], dtype=np.int64)}
-        new_trans = make_onnx_node(self.g, "Transpose", [node.input[0]], attr)
-
-        self.g.copy_shape(node.output[0], new_trans.output[0])
-        self.g.replace_all_inputs(self.g.get_nodes(), node.output[0], new_trans.output[0])
-        return new_trans
-
     def process_weights_and_bias(self, rnn_weights, rnn_props):
         w_r_icfo = rnn_weights.kernel.value
         w_dtype = rnn_weights.kernel.dtype

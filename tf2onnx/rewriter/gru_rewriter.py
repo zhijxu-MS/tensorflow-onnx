@@ -92,9 +92,6 @@ class GRUUnitRewriter(UnitRewriterBase):
     def process_weights_and_bias(self, rnn_weights):
         raise ValueError("not implemented")
 
-    def process_input_x(self, rnn_props, rnn_scope_name):
-        raise ValueError("not implemented")
-
     def process_var_init_nodes(self, rnn_props):
         raise ValueError("not implemented")
 

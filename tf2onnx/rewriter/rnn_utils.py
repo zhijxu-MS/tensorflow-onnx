@@ -202,7 +202,7 @@ def get_weights_from_const_node(node):
 
 def check_is_timemajor_transpose(node):
     # TensorFlow transpose node has perm as its second input
-    if node.type != "Transpose" :
+    if node.type != "Transpose":
         return
 
     perm_node = node.inputs[1]
