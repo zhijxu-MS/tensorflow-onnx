@@ -55,7 +55,6 @@ def save_tensorboard_with_graph():
 
 
 class GRUTests(Tf2OnnxBackendTestBase):
-    # @unittest.skip("demonstrating skipping")
     def test_single_dynamic_gru(self):
         units = 5
         batch_size = 6

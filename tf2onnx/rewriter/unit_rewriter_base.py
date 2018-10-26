@@ -200,6 +200,7 @@ class UnitRewriterBase:
         self.all_nodes.append(rnn_node)
 
         self.print_step("start to handle outputs")
+        # format of ONNX output is different with tf
         self.process_outputs(match, rnn_node, rnn_props, rnn_scope_name)
 
         self.print_step("remove all nodes within original rnn scope except some nodes still useful")

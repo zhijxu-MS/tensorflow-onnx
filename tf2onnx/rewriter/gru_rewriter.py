@@ -65,14 +65,80 @@ class GRUUnitRewriter(UnitRewriterBase):
             log.debug(str(len(concat_nodes)) + "Concat matching found, cannot identify state initializer")
             return None
 
-    def _connect_gru_state_to_graph(self):
-        pass
+    def _connect_gru_state_to_graph(self, gru_node, exit_node, rnn_props):
+        # in tf, state output shape is: [batch, hidden]
+        # in onnx, output shape is: [number_directions, batch, hidden]
+        output_id = gru_node.output[1]
+        squeeze_node = make_onnx_node(self.g, "Squeeze", [output_id], attr={"axes": [0]})
+        gru_state_shape = self.g.get_shape(output_id)
+        self.g.set_shape(squeeze_node.output[0], [gru_state_shape[1], gru_state_shape[2]])
+        self.all_nodes.extend([squeeze_node])
+        self.g.replace_all_inputs(self.all_nodes, exit_node.output[0], squeeze_node.output[0])
 
     def _output_switch_check(self, enter_target_node_input_id, identity_consumers, match):
-        raise ValueError("not implemented")
+        ta_write_nodes = [c for c in identity_consumers if c.type == "TensorArrayWriteV3"]
+        if len(ta_write_nodes) == 1:
+            enter_target_node = self.g.get_node_by_name(enter_target_node_input_id)
+            if enter_target_node.type == "TensorArrayV3":
+                log.debug("found output switch node")
+                return enter_target_node_input_id
+            log.debug("found enter target node is not ta node")
+            return None
+        log.debug(str(len(ta_write_nodes)) + " TensorArrayWriteV3 matching found, cannot validate output switch")
+        return None
 
-    def _connect_gru_output_to_graph(self):
-        pass
+    def _connect_gru_output_to_graph(self, gru_node, exit_node, rnn_props):
+        exit_consumers = self.g.find_output_consumers(exit_node.output[0])
+        gather_node = self._validate_output_exit_consumers(exit_consumers)
+        if len(exit_consumers) != 2 or not gather_node:
+            log.debug("gru output exit node has " + str(len(exit_consumers)) + " consumers")
+            raise ValueError("gru output exit node check failed")
+
+        # gather output for sure has shape [time, batch, hidden]
+        gather_output_id = gather_node.output[0]
+        log.debug("found output ta gather node " + gather_output_id)
+        # in tf batch major mode, output shape is : [batch, time, hidden]
+        # in time major mode, output shape is: [time, batch, hidden]
+        # in onnx, output shape is : [time, num_directions, batch, hidden]
+
+        output_id = gru_node.output[0]
+        squeeze_node = make_onnx_node(self.g, "Squeeze", [output_id], attr={"axes": [1]})
+        gru_output_shape = self.g.get_shape(output_id)
+        self.g.set_shape(squeeze_node.output[0], [gru_output_shape[0], gru_output_shape[2], gru_output_shape[3]])
+
+        if not rnn_props.time_major:
+            gather_consumers = self.g.find_output_consumers(gather_output_id)
+            gather_trans_consumers = [n for n in gather_consumers if check_is_timemajor_transpose(n)]
+            if len(gather_trans_consumers) != 1:
+                raise ValueError("batch major should expect a transpose after gather")
+            trans = gather_trans_consumers[0]  # trans has rnn scope name
+
+            # we just check the transpose here, but will not re-use it, because
+            # it may hold non-const perms. so we re-create a new transpose to replace it
+            attr = {"perm": np.array([1, 0, 2], dtype=np.int64)}
+            new_trans = make_onnx_node(self.g, "Transpose", [squeeze_node.output[0]], attr)
+            trans_input_shape = self.g.get_shape(squeeze_node.output[0])
+            self.g.replace_all_inputs(self.all_nodes, trans.output[0], new_trans.output[0])
+            self.g.set_shape(new_trans.output[0], [trans_input_shape[1], trans_input_shape[0], trans_input_shape[2]])
+            self.all_nodes.extend([new_trans])
+
+        self.g.replace_all_inputs(self.all_nodes, gather_output_id, squeeze_node.output[0])
+        self.all_nodes.extend([squeeze_node])
+
+    @staticmethod
+    def _validate_output_exit_consumers(exit_consumers):
+        if len(exit_consumers) != 2:
+            return None
+
+        gather_node = None
+        for n in exit_consumers:
+            if n.type == "TensorArrayGatherV3":
+                gather_node = n
+            elif n.type == "TensorArraySizeV3":
+                continue
+            else:
+                return None
+        return gather_node
 
     def get_rnn_input_blacklist(self, rnn_weights, rnn_props):
         var_init_nodes = []
@@ -183,12 +249,11 @@ class GRUUnitRewriter(UnitRewriterBase):
         gru_inputs = [
             inputs["X"], inputs["W"], inputs["R"], inputs["B"],
             inputs["sequence_lens"], inputs["initial_state"]]
-        gru_node = make_onnx_node(self.g, "GRU", gru_inputs, attr, 3)
+        gru_node = make_onnx_node(self.g, "GRU", gru_inputs, attr, 2)
 
         x_shape = self.g.get_shape(gru_node.input[0])
         x_seq_length = x_shape[0]
         x_batch_size = x_shape[1]
         self.g.set_shape(gru_node.output[0], [x_seq_length, num_direction, x_batch_size, rnn_props.hidden_size])
         self.g.set_shape(gru_node.output[1], [num_direction, x_batch_size, rnn_props.hidden_size])
-        self.g.copy_shape(gru_node.output[1], gru_node.output[2])
         return gru_node
