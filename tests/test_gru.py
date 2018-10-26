@@ -80,7 +80,7 @@ class GRUTests(Tf2OnnxBackendTestBase):
         output_names_with_port = ["output:0", "cell_state:0"]
         self.run_test_case(feed_dict, input_names_with_port, output_names_with_port, rtol=1e-05)
 
-    def test_multiple_dynamic_gru_with_parameters(self):
+    def test_multiple_dynamic_gru(self):
         units = 5
         batch_size = 6
         x_val = np.array([[1., 1.], [2., 2.], [3., 3.], [4., 4.]], dtype=np.float32)
@@ -90,8 +90,8 @@ class GRUTests(Tf2OnnxBackendTestBase):
         _ = tf.placeholder(tf.float32, x_val.shape, name="input_2")
         initializer = init_ops.constant_initializer(0.5)
 
-        lstm_output_list = []
-        lstm_cell_state_list = []
+        gru_output_list = []
+        gru_cell_state_list = []
         if True:
             # no scope
             cell = rnn.GRUCell(
@@ -101,8 +101,8 @@ class GRUTests(Tf2OnnxBackendTestBase):
                 cell,
                 x,
                 dtype=tf.float32)
-            lstm_output_list.append(outputs)
-            lstm_cell_state_list.append(cell_state)
+            gru_output_list.append(outputs)
+            gru_cell_state_list.append(cell_state)
 
         if True:
             # given scope
@@ -116,16 +116,179 @@ class GRUTests(Tf2OnnxBackendTestBase):
                     dtype=tf.float32,
                     sequence_length=[4, 4, 4, 4, 4, 4],
                     scope=scope)
-            lstm_output_list.append(outputs)
-            lstm_cell_state_list.append(cell_state)
+            gru_output_list.append(outputs)
+            gru_cell_state_list.append(cell_state)
 
-        _ = tf.identity(lstm_output_list, name="output")
-        _ = tf.identity(lstm_cell_state_list, name="cell_state")
+        _ = tf.identity(gru_output_list, name="output")
+        _ = tf.identity(gru_cell_state_list, name="cell_state")
 
         feed_dict = {"input_1:0": x_val}
         input_names_with_port = ["input_1:0"]
         output_names_with_port = ["output:0", "cell_state:0"]
         self.run_test_case(feed_dict, input_names_with_port, output_names_with_port, rtol=1e-5)
+
+    def test_single_dynamic_gru_seq_length_is_const(self):
+        units = 5
+        batch_size = 6
+        x_val = np.array([[1., 1.], [2., 2.], [3., 3.], [4., 4.], [5., 5.]], dtype=np.float32)
+        x_val = np.stack([x_val] * batch_size)
+        x = tf.placeholder(tf.float32, x_val.shape, name="input_1")
+        initializer = init_ops.constant_initializer(0.5)
+
+        # no scope
+        cell = rnn.GRUCell(
+            units,
+            kernel_initializer=initializer)
+        outputs, cell_state = tf.nn.dynamic_rnn(
+            cell,
+            x,
+            dtype=tf.float32,
+            sequence_length=[4, 3, 4, 5, 2, 1])
+
+        _ = tf.identity(outputs, name="output")
+        _ = tf.identity(cell_state, name="cell_state")
+
+        feed_dict = {"input_1:0": x_val}
+        input_names_with_port = ["input_1:0"]
+        output_names_with_port = ["output:0", "cell_state:0"]
+        self.run_test_case(feed_dict, input_names_with_port, output_names_with_port, rtol=1e-4)
+
+    def test_single_dynamic_gru_seq_length_is_not_const(self):
+        units = 5
+        batch_size = 6
+        x_val = np.array([[1., 1.], [2., 2.], [3., 3.], [4., 4.], [5., 5.]], dtype=np.float32)
+        x_val = np.stack([x_val] * batch_size)
+        state_is_tuple = True
+        x = tf.placeholder(tf.float32, x_val.shape, name="input_1")
+        initializer = init_ops.constant_initializer(0.5)
+
+        y_val = np.array([4, 3, 4, 5, 2, 1], dtype=np.int32)
+        seq_length = tf.placeholder(tf.int32, y_val.shape, name="input_2")
+
+        # no scope
+        cell = rnn.GRUCell(
+            units,
+            kernel_initializer=initializer)
+        outputs, cell_state = tf.nn.dynamic_rnn(
+            cell,
+            x,
+            dtype=tf.float32,
+            sequence_length=tf.identity(seq_length))
+
+        _ = tf.identity(outputs, name="output")
+        _ = tf.identity(cell_state, name="cell_state")
+
+        feed_dict = {"input_1:0": x_val, "input_2:0": y_val}
+        input_names_with_port = ["input_1:0", "input_2:0"]
+        output_names_with_port = ["output:0", "cell_state:0"]
+        self.run_test_case(feed_dict, input_names_with_port, output_names_with_port, rtol=1e-04)
+
+    def test_single_dynamic_gru_placeholder_input(self):
+        units = 5
+        x_val = np.array([[1., 1.], [2., 2.], [3., 3.], [4., 4.]], dtype=np.float32)
+        x_val = np.stack([x_val] * 6)
+        state_is_tuple = True
+        x = tf.placeholder(tf.float32, shape=(None, 4, 2), name="input_1")
+        initializer = init_ops.constant_initializer(0.5)
+
+        # no scope
+        cell = rnn.GRUCell(
+            units,
+            kernel_initializer=initializer)
+        outputs, cell_state = tf.nn.dynamic_rnn(
+            cell,
+            x,
+            dtype=tf.float32)  # by default zero initializer is used
+
+        _ = tf.identity(outputs, name="output")
+        _ = tf.identity(cell_state, name="cell_state")
+
+        feed_dict = {"input_1:0": x_val}
+        input_names_with_port = ["input_1:0"]
+        output_names_with_port = ["output:0", "cell_state:0"]
+        self.run_test_case(feed_dict, input_names_with_port, output_names_with_port, rtol=1e-06)
+
+    def test_single_dynamic_gru_ch_zero_state_initializer(self):
+        units = 5
+        batch_size = 6
+        x_val = np.array([[1., 1.], [2., 2.], [3., 3.], [4., 4.], [5., 5.]], dtype=np.float32)
+        x_val = np.stack([x_val] * batch_size)
+        x = tf.placeholder(tf.float32, x_val.shape, name="input_1")
+        initializer = init_ops.constant_initializer(0.5)
+
+        # no scope
+        cell = rnn.GRUCell(
+            units,
+            kernel_initializer=initializer)
+
+        # defining initial state
+        initial_state = cell.zero_state(batch_size, dtype=tf.float32)
+        outputs, cell_state = tf.nn.dynamic_rnn(
+            cell,
+            x,
+            initial_state=initial_state,
+            dtype=tf.float32)
+
+        _ = tf.identity(outputs, name="output")
+        _ = tf.identity(cell_state, name="cell_state")
+
+        feed_dict = {"input_1:0": x_val}
+        input_names_with_port = ["input_1:0"]
+        output_names_with_port = ["output:0", "cell_state:0"]
+        self.run_test_case(feed_dict, input_names_with_port, output_names_with_port, rtol=1e-06)
+
+    def test_single_dynamic_gru_random_weights(self):
+        hidden_size = 5
+        batch_size = 6
+        x_val = np.array([[1., 1.], [2., 2.], [3., 3.], [4., 4.]], dtype=np.float32)
+        x_val = np.stack([x_val] * batch_size)
+
+        x = tf.placeholder(tf.float32, x_val.shape, name="input_1")
+        initializer = tf.random_uniform_initializer(-1.0, 1.0)
+
+        # no scope
+        cell = rnn.GRUCell(
+            hidden_size,
+            kernel_initializer=initializer)
+
+        outputs, cell_state = tf.nn.dynamic_rnn(
+            cell,
+            x,
+            dtype=tf.float32)
+
+        _ = tf.identity(outputs, name="output")
+        _ = tf.identity(cell_state, name="cell_state")
+
+        feed_dict = {"input_1:0": x_val}
+        input_names_with_port = ["input_1:0"]
+        output_names_with_port = ["output:0", "cell_state:0"]
+        self.run_test_case(feed_dict, input_names_with_port, output_names_with_port, 0.0001)
+
+    def test_single_dynamic_gru_random_weights2(self):
+        hidden_size = 128
+        batch_size = 1
+        x_val = np.random.randn(1, 133).astype('f')
+        x_val = np.stack([x_val] * batch_size)
+
+        x = tf.placeholder(tf.float32, x_val.shape, name="input_1")
+        initializer = tf.random_uniform_initializer(0.0, 1.0)
+        # no scope
+        cell = rnn.GRUCell(
+            hidden_size,
+            kernel_initializer=initializer)
+
+        outputs, cell_state = tf.nn.dynamic_rnn(
+            cell,
+            x,
+            dtype=tf.float32)
+
+        _ = tf.identity(outputs, name="output")
+        _ = tf.identity(cell_state, name="cell_state")
+
+        feed_dict = {"input_1:0": x_val}
+        input_names_with_port = ["input_1:0"]
+        output_names_with_port = ["output:0", "cell_state:0"]
+        self.run_test_case(feed_dict, input_names_with_port, output_names_with_port, 0.01)
 
 
 if __name__ == '__main__':
