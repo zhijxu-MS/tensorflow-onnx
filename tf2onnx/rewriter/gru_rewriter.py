@@ -236,6 +236,12 @@ class GRUUnitRewriter(UnitRewriterBase):
             self.all_nodes.append(squeeze_node)
             return squeeze_node.output[0]
 
+    @staticmethod
+    def get_rnn_activation(match):
+        # in tf, only activation of hidden gate is optional, input and update gate always use sigmoid
+        activation_op = match.get_op("optional_activation")
+        return activation_op.type
+
     def create_rnn_node(self, rnn_props):
         # specify if the RNN is forward, reverse, or bidirectional.
         # Must be one of forward (default), reverse, or bidirectional.
@@ -244,7 +250,8 @@ class GRUUnitRewriter(UnitRewriterBase):
         direction = "forward"
         num_direction = 1
         # todo: input_forget
-        attr = {"direction": direction, "hidden_size": rnn_props.hidden_size}
+        attr = {"direction": direction, "hidden_size": rnn_props.hidden_size,
+                "activations": ["sigmoid", rnn_props.activation]}
         inputs = rnn_props.onnx_input_ids
         gru_inputs = [
             inputs["X"], inputs["W"], inputs["R"], inputs["B"],

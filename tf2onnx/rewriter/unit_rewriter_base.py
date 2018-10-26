@@ -196,6 +196,7 @@ class UnitRewriterBase:
 
         self.print_step("start to build new rnn node")
 
+        rnn_props.activation = self.get_rnn_activation(match)
         rnn_node = self.create_rnn_node(rnn_props)
         self.all_nodes.append(rnn_node)
 
@@ -240,6 +241,10 @@ class UnitRewriterBase:
         rnn_props.input_node = input_node_candidate
         rnn_props.input_id = input_id_candidate
         return rnn_props
+
+    @staticmethod
+    def get_rnn_activation(match):
+        return None
 
     def get_var_initializers(self, match, rnn_props, rnn_scope_name):
         """

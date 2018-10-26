@@ -78,7 +78,7 @@ class GRUTests(Tf2OnnxBackendTestBase):
         input_names_with_port = ["input_1:0"]
         feed_dict = {"input_1:0": x_val}
         output_names_with_port = ["output:0", "cell_state:0"]
-        self.run_test_case(feed_dict, input_names_with_port, output_names_with_port, rtol=1e-06)
+        self.run_test_case(feed_dict, input_names_with_port, output_names_with_port, rtol=1e-05)
 
     def test_multiple_dynamic_gru_with_parameters(self):
         units = 5
@@ -125,7 +125,7 @@ class GRUTests(Tf2OnnxBackendTestBase):
         feed_dict = {"input_1:0": x_val}
         input_names_with_port = ["input_1:0"]
         output_names_with_port = ["output:0", "cell_state:0"]
-        self.run_test_case(feed_dict, input_names_with_port, output_names_with_port, rtol=1e-06)
+        self.run_test_case(feed_dict, input_names_with_port, output_names_with_port, rtol=1e-5)
 
 
 if __name__ == '__main__':
