@@ -166,14 +166,19 @@ grucell_pattern = \
     ])
 
 
+grublockcell_pattern = OpTypePattern("GRUBlockCell", name="GRUBlockCell")
+
+
 class RNNUnitType(Enum):
     LSTMCell = 0  # TF LSTMCell and BasicLSTMCell share the same pattern
     GRUCell = 1
+    GRUBlockCell = 2
 
 
 rnn_cell_patterns = {
     RNNUnitType.LSTMCell: lstmcell_pattern,
-    RNNUnitType.GRUCell: grucell_pattern
+    RNNUnitType.GRUCell: grucell_pattern,
+    RNNUnitType.GRUBlockCell: grublockcell_pattern
 }
 
 
@@ -245,7 +250,7 @@ def make_onnx_node(g, op_type, inputs, attr=None, output_count=1, skip_conversio
     outputs = [node_name + ":" + str(i) for i in np.arange(output_count)]
     node = Node(
         helper.make_node(op_type, inputs, outputs, name = node_name, **attr),
-        g, skip_conversion = skip_conversion)
+        g, skip_conversion=skip_conversion)
 
     return node
 

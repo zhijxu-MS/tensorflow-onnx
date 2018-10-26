@@ -29,6 +29,9 @@ class GRUUnitRewriter(UnitRewriterBase):
     def run(self):
         return super(GRUUnitRewriter, self).run(RNNUnitType.GRUCell)
 
+    def run2(self, unit_type):
+        return super(GRUUnitRewriter, self).run(unit_type)
+
     def get_rnn_scope_name(self, match):
         # take the cell output and go up 3 levels to find the scope:
         # name of h is like root/while/gru_cell/mul_2

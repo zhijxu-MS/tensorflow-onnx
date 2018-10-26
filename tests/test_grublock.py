@@ -64,8 +64,8 @@ class GRUBlockTests(Tf2OnnxBackendTestBase):
 
         x = tf.placeholder(tf.float32, x_val.shape, name="input_1")
 
-        # no scope
-        cell = gru_ops.GRUBlockCell(units)
+        with tf.name_scope("xzj"):
+            cell = gru_ops.GRUBlockCell(units)
 
         outputs, cell_state = tf.nn.dynamic_rnn(
             cell,
