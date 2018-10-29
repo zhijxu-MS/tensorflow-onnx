@@ -10,9 +10,8 @@ from __future__ import print_function
 
 from tf2onnx.rewriter.bilstm_rewriter import *
 from tf2onnx.rewriter.lstm_rewriter import *
-from tf2onnx.rewriter.rnn_utils import *
-from tf2onnx.rewriter.gru_rewriter import *
 from tf2onnx.rewriter.grublock_rewriter import *
+from tf2onnx.rewriter.bigru_rewriter import *
 
 
 logging.basicConfig(level=logging.INFO)
@@ -31,6 +30,10 @@ def rewrite_bi_direction_lstm(g, ops):
 def rewrite_single_direction_gru(g, ops):
     r = GRUUnitRewriter(g)
     return r.run()
+
+
+def rewrite_bi_direction_gru(g, ops):
+    return rewrite_bidirectional_grus(g, ops)
 
 
 def rewrite_grublock(g, ops):

@@ -26,6 +26,7 @@ from tf2onnx.graph_matcher import OpTypePattern, GraphMatcher
 from tf2onnx.rewriter.rnn import rewrite_single_direction_lstm, rewrite_bi_direction_lstm
 from tf2onnx.rewriter.rnn import rewrite_single_direction_gru
 from tf2onnx.rewriter.rnn import rewrite_grublock
+from tf2onnx.rewriter.rnn import rewrite_bi_direction_gru
 from tf2onnx.utils import port_name
 
 logging.basicConfig(level=logging.INFO)
@@ -1730,7 +1731,7 @@ def process_tf_graph(tf_graph, continue_on_error=False, verbose=False, target=No
 
     # pre-processing graph rewrites
     rewriters = [rewrite_single_direction_gru,
-                 rewrite_grublock]
+                 rewrite_grublock, rewrite_bi_direction_gru]
 
     if custom_rewriter is not None:
         rewriters.extend(custom_rewriter)
