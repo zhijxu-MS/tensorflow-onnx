@@ -79,10 +79,10 @@ class GRUUnitRewriter(UnitRewriterBase):
         self.g.replace_all_inputs(self.all_nodes, exit_node.output[0], squeeze_node.output[0])
 
     def _output_switch_check(self, enter_target_node_input_id, identity_consumers, match):
-        ta_write_nodes = [c for c in identity_consumers if c.type == "TensorArrayWriteV3"]
+        ta_write_nodes = [c for c in identity_consumers if c.type.startswith("TensorArrayWriteV")]
         if len(ta_write_nodes) == 1:
             enter_target_node = self.g.get_node_by_name(enter_target_node_input_id)
-            if enter_target_node.type == "TensorArrayV3":
+            if enter_target_node.type.startswith("TensorArrayV"):
                 log.debug("found output switch node")
                 return enter_target_node_input_id
             log.debug("found enter target node is not ta node")
@@ -135,9 +135,9 @@ class GRUUnitRewriter(UnitRewriterBase):
 
         gather_node = None
         for n in exit_consumers:
-            if n.type == "TensorArrayGatherV3":
+            if n.type.startswith("TensorArrayGatherV"):
                 gather_node = n
-            elif n.type == "TensorArraySizeV3":
+            elif n.type.startswith("TensorArraySizeV"):
                 continue
             else:
                 return None
