@@ -177,7 +177,7 @@ class UnitRewriterBase:
         if seq_len_input_node:
             input_filter.append(seq_len_input_node)
 
-        self.find_inputs(rnn_scope_name, rnn_props, input_filter)
+        self.find_inputs(rnn_scope_name, rnn_props, match, input_filter)
         if not rnn_props.is_valid():
             log.error("rnn properties are not valid, skip")
             return REWRITER_RESULT.SKIP
@@ -218,7 +218,7 @@ class UnitRewriterBase:
 
         self.g.set_nodes(new_nodes)
 
-    def find_inputs(self, rnn_scope_name, rnn_props, input_blacklist=None):
+    def find_inputs(self, rnn_scope_name, rnn_props, match, input_blacklist=None):
         rnn_input_nodes = []
         for n in self.g.get_nodes():
             if n.name.startswith(rnn_scope_name):
@@ -383,7 +383,7 @@ class UnitRewriterBase:
 
                     enter_target_input_id = self.check_switch_by_usage_pattern(switch, match, var_checker)
                     if enter_target_input_id:
-                        log.debug("this is " + var_name +" exit node")
+                        log.debug("this is " + var_name + " exit node")
                         var_exit_connector(rnn_node, n, rnn_props)
                         break
 

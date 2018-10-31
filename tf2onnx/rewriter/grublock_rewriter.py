@@ -58,6 +58,26 @@ class GRUBlockUnitRewriter(GRUUnitRewriter):
                    "hidden_bias": hidden_bias}
             return res
 
+    def find_inputs(self, rnn_scope_name, rnn_props, match, input_blacklist=None):
+        cell_node = match.get_op("GRUBlockCell")
+        assert cell_node.type == "GRUBlockCell"
+        read_node = cell_node.inputs[0]
+        assert read_node.type.startswith("TensorArrayReadV")
+        enter_node = read_node.inputs[2]
+        assert enter_node.type == "Enter"
+        scatter_node = enter_node.inputs[0]
+        assert scatter_node.type.startswith("TensorArrayScatterV")
+        node = scatter_node.inputs[2]
+        node_id = scatter_node.input[2]
+        # dynamic_rnn may insert transpose op if input data format is [B, T, D]
+        if node.type == "Transpose" and node.name.startswith(rnn_scope_name):
+            node_id = node.input[0]
+            node = node.inputs[0]
+
+        assert not node.name.startswith(rnn_scope_name)
+        rnn_props.input_node = node
+        rnn_props.input_id = node_id
+
     @staticmethod
     def _state_switch_check(enter_target_node_input_id, identity_consumers, match):
         node = match.get_op("GRUBlockCell")
