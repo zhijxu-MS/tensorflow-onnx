@@ -340,10 +340,21 @@ class UnitRewriterBase:
             if seq_len_node.is_const():
                 self.must_keep_nodes.append(seq_len_node)
                 return seq_len_node
-            elif not seq_len_node.inputs[0].name.startswith(rnn_scope_name):
-                return seq_len_node.inputs[0]
             else:
-                raise ValueError("sequence length node should be outside of rnn scope")
+                # input of the "identity" node may be a "cast"
+                # if so, then we have to keep it
+                # sentence "math_ops.to_int32(sequence_length)" in tf results in the "cast" op
+                if seq_len_node.inputs[0].type == "Cast":
+                    cast_node = seq_len_node.inputs[0]
+                    if not cast_node.inputs[0].name.startswith(rnn_scope_name):
+                        self.must_keep_nodes.append(cast_node)
+                        return seq_len_node.inputs[0]
+                    else:
+                        raise ValueError("sequence length node should be outside of rnn scope")
+                elif not seq_len_node.inputs[0].name.startswith(rnn_scope_name):
+                    return seq_len_node.inputs[0]
+                else:
+                    raise ValueError("sequence length node should be outside of rnn scope")
         else:
             raise ValueError("there are more sequence length nodes than expected")
 
