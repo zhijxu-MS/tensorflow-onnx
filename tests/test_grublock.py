@@ -265,6 +265,65 @@ class GRUBlockTests(Tf2OnnxBackendTestBase):
         output_names_with_port = ["output:0", "cell_state:0"]
         self.run_test_case(feed_dict, input_names_with_port, output_names_with_port, 0.01)
 
+    def test_dynamic_bigru(self):
+        units = 5
+        batch_size = 6
+        x_val = np.array([[1., 1.], [2., 2.], [3., 3.]], dtype=np.float32)
+        x_val = np.stack([x_val] * batch_size)
+
+        x = tf.placeholder(tf.float32, x_val.shape, name="input_1")
+
+        gru_list = []
+        if True:
+            # bigru, no scope
+            cell1 = rnn.GRUBlockCell(
+                units)
+            cell2 = rnn.GRUBlockCell(
+                units)
+            outputs, cell_state = tf.nn.bidirectional_dynamic_rnn(
+                cell1,
+                cell2,
+                x,
+                dtype=tf.float32)
+            gru_list.append(outputs)
+
+        _ = tf.identity(outputs, name="output")
+        _ = tf.identity(cell_state, name="cell_state")
+
+        feed_dict = {"input_1:0": x_val}
+        input_names_with_port = ["input_1:0"]
+        output_names_with_port = ["output:0", "cell_state:0"]
+        self.run_test_case(feed_dict, input_names_with_port, output_names_with_port, rtol=1e-3)
+
+    def test_dynamic_bigru_output_consumed_only(self):
+        units = 5
+        batch_size = 6
+        x_val = np.array([[1., 1.], [2., 2.], [3., 3.]], dtype=np.float32)
+        x_val = np.stack([x_val] * batch_size)
+
+        x = tf.placeholder(tf.float32, x_val.shape, name="input_1")
+
+        gru_list = []
+        if True:
+            # bigru, no scope
+            cell1 = rnn.GRUBlockCell(
+                units)
+            cell2 = rnn.GRUBlockCell(
+                units)
+            outputs, _ = tf.nn.bidirectional_dynamic_rnn(
+                cell1,
+                cell2,
+                x,
+                dtype=tf.float32)
+            gru_list.append(outputs)
+
+        _ = tf.identity(outputs, name="output")
+
+        feed_dict = {"input_1:0": x_val}
+        input_names_with_port = ["input_1:0"]
+        output_names_with_port = ["output:0"]
+        self.run_test_case(feed_dict, input_names_with_port, output_names_with_port, rtol=1e-3)
+
 
 if __name__ == '__main__':
     Tf2OnnxBackendTestBase.trigger(GRUBlockTests)
