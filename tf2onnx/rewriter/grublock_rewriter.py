@@ -33,9 +33,9 @@ class GRUBlockUnitRewriter(GRUUnitRewriter):
         # name of h is like root/while/gru_cell/mul_2
         # root is the dynamic rnn's scope name.
         # root/while/gru_cell is cell's scope name
-        h_node = match.get_op("GRUBlockCell")
+        h_node = match.get_op("GRUBlockCell").inputs[0]
         parts = h_node.name.split('/')
-        rnn_scope_name = '/'.join(parts[0:-3])
+        rnn_scope_name = '/'.join(parts[0:-2])
         return rnn_scope_name
 
     def get_weight_and_bias(self, match):
