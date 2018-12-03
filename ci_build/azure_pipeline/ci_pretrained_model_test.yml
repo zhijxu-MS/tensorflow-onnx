@@ -2,32 +2,33 @@
 # Create and test a Python package on multiple Python versions.
 # Add steps that analyze code, save the dist with the build record, publish to a PyPI-compatible index, and more:
 # https://docs.microsoft.com/azure/devops/pipelines/languages/python
-
 jobs:
-
-- job: 'Linux'
-  pool:
+- template: ci_job_template.yml
+  parameters:
+    platform: 'Linux'
     vmImage: 'ubuntu-16.04'
-  variables:
+    python_version: '3.5'
+    onnx_version: '' #newest version installed when value is null string
     onnx_backend: 'onnxruntime'
-    onnx_backend_version: '' #newest version installed when value is null string
-    test_case: 'pretrained_models'
-  strategy:
-    maxParallel: 10
-    matrix:
-      opset7_tf1_11:
-        opset_version: 7
-        tf_version: '1.11'
-      opset8_tf1_11:
-        opset_version: 8
-        tf_version: '1.11'
+    onnx_backend_version: ''
+    test_case: 'pretrained_model'
 
-  steps:
-  - template: steps_template.yml
-    parameters:
-      tensorflow_version: $TF_VERSION #newest version installed when value is null string
-      opset_version: $OPSET_VERSION
-      python_version: '3.5'
-      onnx_version: ''
-      onnx_backend: $ONNX_BACKEND #variable come from variable group of build definition
-      onnx_backend_version: $ONNX_BACKEND_VERSION
+- template: ci_job_template.yml
+  parameters:
+    platform: 'Windows'
+    vmImage: 'vs2017-win2016'
+    python_version: '3.5'
+    onnx_version: '' #newest version installed when value is null string
+    onnx_backend: 'onnxruntime'
+    onnx_backend_version: ''
+    test_case: 'pretrained_model'
+
+- template: ci_job_template.yml
+  parameters:
+    platform: 'macOS'
+    vmImage: 'macOS-10.13'
+    python_version: '3.5'
+    onnx_version: '' #newest version installed when value is null string
+    onnx_backend: 'onnxruntime'
+    onnx_backend_version: ''
+    test_case: 'pretrained_model'

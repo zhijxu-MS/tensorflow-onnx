@@ -1,10 +1,11 @@
 parameters:
-  python_version: '3.5'
   tensorflow_version: ''
   opset_version: ''
+  python_version: ''
   onnx_version: ''
-  onnx_backend: 'onnxruntime'
+  onnx_backend: ''
   onnx_backend_version: ''
+  test_case: ''
 
 steps:
 - task: UsePythonVersion@0
@@ -50,7 +51,7 @@ steps:
     echo "running unit tests"
     export TF2ONNX_TEST_OPSET=${{ parameters.opset_version }}
     python -m pytest --cov=tf2onnx --cov-report=term  --disable-pytest-warnings -r s tests
-  condition: eq(variables['test_case'], 'unit_tests')
+  condition: eq('${{ parameters.test_case }}', 'unit_test')
   displayName: 'unit test'
 
 - bash: |
@@ -59,5 +60,5 @@ steps:
     echo "running pretrained model tests"
     python tests/run_pretrained_models.py --config tests/unity.yaml --opset ${{ parameters.opset_version }}
     python tests/run_pretrained_models.py --config tests/run_pretrained_models.yaml --opset ${{ parameters.opset_version }}
-  condition: eq(variables['test_case'], 'pretrained_models')
+  condition: eq('${{ parameters.test_case }}', 'pretrained_model')
   displayName: 'pretrained_model test'

@@ -1,0 +1,79 @@
+# Python package
+# Create and test a Python package on multiple Python versions.
+# Add steps that analyze code, save the dist with the build record, publish to a PyPI-compatible index, and more:
+# https://docs.microsoft.com/azure/devops/pipelines/languages/python
+parameters:
+  platform: ''
+  vmImage: ''
+  python_version: ''
+  onnx_version: '' 
+  onnx_backend: ''
+  onnx_backend_version: '' 
+  test_case: ''
+  
+jobs:
+
+- job: ${{ parameters.platform }}
+  pool:
+    vmImage: ${{ parameters.vmImage }}
+  strategy:
+    maxParallel: 10
+    matrix:
+      opset7_tf1.5:
+        opset_version: '7'
+        tf_version: '1.5'
+      opset7_tf1.6:
+        opset_version: '7'
+        tf_version: '1.6'
+      opset7_tf1.7:
+        opset_version: '7'
+        tf_version: '1.7'
+      opset7_tf1.8:
+        opset_version: '7'
+        tf_version: '1.8'
+      opset7_tf1.9:
+        opset_version: '7'
+        tf_version: '1.9'
+      opset7_tf1.10:
+        opset_version: '7'
+        tf_version: '1.10'
+      opset7_tf1.11:
+        opset_version: '7'
+        tf_version: '1.11'
+
+      opset8_tf1.5:
+        opset_version: '8'
+        tf_version: '1.5'
+      opset8_tf1.6:
+        opset_version: '8'
+        tf_version: '1.6'
+      opset8_tf1.7:
+        opset_version: '8'
+        tf_version: '1.7'
+      opset8_tf1.8:
+        opset_version: '8'
+        tf_version: '1.8'
+      opset8_tf1.9:
+        opset_version: '8'
+        tf_version: '1.9'
+      opset8_tf1.10:
+        opset_version: '8'
+        tf_version: '1.10'
+      opset8_tf1.11:
+        opset_version: '8'
+        tf_version: '1.11'
+#      opset8_tf1.12:   cannot import name 'signature_def_utils'
+#        opset_version: '8'
+#        tf_version: '1.12'
+
+
+  steps:
+  - template: steps_template.yml
+    parameters:
+      tensorflow_version: $TF_VERSION
+      opset_version: $OPSET_VERSION
+      python_version: ${{ parameters.python_version }}
+      onnx_version: ${{ parameters.onnx_version }}
+      onnx_backend: ${{ parameters.onnx_backend }}
+      onnx_backend_version: ${{ parameters.onnx_backend_version }}
+      test_case: ${{ parameters.test_case}}

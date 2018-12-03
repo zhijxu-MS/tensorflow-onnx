@@ -4,71 +4,32 @@
 # https://docs.microsoft.com/azure/devops/pipelines/languages/python
 
 jobs:
-
-- job: 'Linux'
-  pool:
+- template: nightly_job_template.yml
+  parameters:
+    platform: 'Linux'
     vmImage: 'ubuntu-16.04'
-  variables:
+    python_version: '3.5'
+    onnx_version: '' #newest version installed when value is null string
     onnx_backend: 'onnxruntime'
-    onnx_backend_version: '' #newest version installed when value is null string
-    test_case: "unit_tests"
-  strategy:
-    maxParallel: 10
-    matrix:
-      opset7_tf1.5:
-        opset_version: '7'
-        tf_version: '1.5'
-      opset7_tf1.6:
-        opset_version: '7'
-        tf_version: '1.6'
-      opset7_tf1.7:
-        opset_version: '7'
-        tf_version: '1.7'
-      opset7_tf1.8:
-        opset_version: '7'
-        tf_version: '1.8'
-      opset7_tf1.9:
-        opset_version: '7'
-        tf_version: '1.9'
-      opset7_tf1.10:
-        opset_version: '7'
-        tf_version: '1.10'
-      opset7_tf1.11:
-        opset_version: '7'
-        tf_version: '1.11'
+    onnx_backend_version: ''
+    test_case: 'unit_test' 
 
-      opset8_tf1.5:
-        opset_version: '8'
-        tf_version: '1.5'
-      opset8_tf1.6:
-        opset_version: '8'
-        tf_version: '1.6'
-      opset8_tf1.7:
-        opset_version: '8'
-        tf_version: '1.7'
-      opset8_tf1.8:
-        opset_version: '8'
-        tf_version: '1.8'
-      opset8_tf1.9:
-        opset_version: '8'
-        tf_version: '1.9'
-      opset8_tf1.10:
-        opset_version: '8'
-        tf_version: '1.10'
-      opset8_tf1.11:
-        opset_version: '8'
-        tf_version: '1.11'
-#      opset8_tf1.12:   cannot import name 'signature_def_utils'
-#        opset_version: '8'
-#        tf_version: '1.12'
+- template: nightly_job_template.yml
+  parameters:
+    platform: 'Windows'
+    vmImage: 'vs2017-win2016'
+    python_version: '3.5'
+    onnx_version: '' #newest version installed when value is null string
+    onnx_backend: 'onnxruntime'
+    onnx_backend_version: ''
+    test_case: 'unit_test' 
 
-
-  steps:
-  - template: steps_template.yml
-    parameters:
-      tensorflow_version: $TF_VERSION #newest version installed when value is null string
-      opset_version: $OPSET_VERSION
-      python_version: '3.5'
-      onnx_version: ''
-      onnx_backend: $ONNX_BACKEND #variable come from variable group of build definition
-      onnx_backend_version: $ONNX_BACKEND_VERSION
+- template: nightly_job_template.yml
+  parameters:
+    platform: 'macOS'
+    vmImage: 'macOS-10.13'
+    python_version: '3.5'
+    onnx_version: '' #newest version installed when value is null string
+    onnx_backend: 'onnxruntime'
+    onnx_backend_version: ''
+    test_case: 'unit_test' 

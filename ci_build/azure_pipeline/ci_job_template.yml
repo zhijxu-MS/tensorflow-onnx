@@ -1,0 +1,38 @@
+# Python package
+# Create and test a Python package on multiple Python versions.
+# Add steps that analyze code, save the dist with the build record, publish to a PyPI-compatible index, and more:
+# https://docs.microsoft.com/azure/devops/pipelines/languages/python
+parameters:
+  platform: ''
+  vmImage: ''
+  python_version: ''
+  onnx_version: '' 
+  onnx_backend: ''
+  onnx_backend_version: '' 
+  test_case: ''
+  
+jobs:
+
+- job: ${{ parameters.platform }}
+  pool:
+    vmImage: ${{ parameters.vmImage }}
+  strategy:
+    maxParallel: 10
+    matrix:
+      opset7_tf1_11:
+        tf_version: '1.11'
+        opset_version: 7
+      opset8_tf1_11:
+        tf_version: '1.11'
+        opset_version: 8
+
+  steps:
+  - template: steps_template.yml
+    parameters:
+      tensorflow_version: $TF_VERSION
+      opset_version: $OPSET_VERSION
+      python_version: ${{ parameters.python_version }}
+      onnx_version: ${{ parameters.onnx_version }}
+      onnx_backend: ${{ parameters.onnx_backend }}
+      onnx_backend_version: ${{ parameters.onnx_backend_version }}
+      test_case: ${{ parameters.test_case}}
