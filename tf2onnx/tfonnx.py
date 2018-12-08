@@ -31,6 +31,7 @@ from tf2onnx.rewriter.rnn import rewrite_single_direction_gru
 from tf2onnx.rewriter.rnn import rewrite_single_direction_grublock
 from tf2onnx.rewriter.rnn import rewrite_single_direction_lstm, rewrite_bi_direction_lstm
 from tf2onnx.rewriter.rnn_utils import is_tensor_array_op
+from tf2onnx.shape_inference import infer_shape_for_graph, set_shape_from_inputs_broadcast
 from tf2onnx.utils import port_name
 
 logging.basicConfig(level=logging.INFO)
@@ -203,7 +204,7 @@ def identity_op(ctx, node, name, args):
     return node
 
 
-def range_op(ctx, node, name, args):
+def range_op7(ctx, node, name, args):
     """Range."""
     # T range = Range(T start, T limit, T delta)
     # V v_final_and_scan_outputs = Loop(int64 M, B cond, V v_initial)
@@ -288,6 +289,7 @@ def range_op(ctx, node, name, args):
 
     range_output = utils.port_name(base_name)
     nodes.append(Node(utils.make_onnx_identity(loop_outputs[1], range_output, name=base_name), ctx))
+    ctx.set_dtype(range_output, dtype)
     ctx.replace_all_inputs(ctx.get_nodes(), output_name, range_output)
 
     return nodes
@@ -396,7 +398,7 @@ def square_op(ctx, node, name, args):
 
 def squeeze_op(ctx, node, name, args):
     # T output = Squeeze(T input, @list(int) squeeze_dims)
-    # T squeezed = Squeeze(T data, @AttrType.INTS axes)
+    # T squeezed = Squeeze(T data, @AttrType.INTS axes), axes are list of positive integers.
     axis = node.get_attr("axis")
     if not axis:
         axis = node.get_attr("squeeze_dims")
@@ -406,8 +408,11 @@ def squeeze_op(ctx, node, name, args):
         del node.attr["axis"]
 
     shape = ctx.get_shape(node.input[0])
+    utils.make_sure(shape is not None, "squeeze input shape cannot be None")
+    shape_len = len(shape)
     if axis and axis.ints:
         axis = axis.ints
+        axis = [a + shape_len if a < 0 else a for a in axis]
     else:
         axis = [i for i, j in enumerate(shape) if j == 1]
     node.set_attr("axes", axis)
@@ -453,6 +458,30 @@ def reshape_op5(ctx, node, name, args):
         ctx.copy_shape(node.output[0], output_cast.output[0])
         nodes.append(output_cast)
     return [input_cast] + nodes
+
+
+def less_op7(ctx, node, name, args):
+    """Elementwise Ops with Less-7 flag."""
+    nodes = [node]
+    input1_dtype = ctx.get_dtype(node.input[0])
+    input2_dtype = ctx.get_dtype(node.input[1])
+    utils.make_sure(input1_dtype == input2_dtype, "less inputs not having same dtype")
+    target_dtype = onnx_pb.TensorProto.FLOAT
+    need_case_1 = input1_dtype != target_dtype
+    if need_case_1:
+        input1_cast = ctx.insert_new_node_on_input(node, "Cast", node.input[0])
+        input1_cast.set_attr("to", target_dtype)
+        ctx.copy_shape(node.output[0], input1_cast.output[0])
+        ctx.set_shape(input1_cast.output[0], target_dtype)
+        nodes.insert(0, input1_cast)
+
+        input2_cast = ctx.insert_new_node_on_input(node, "Cast", node.input[1])
+        input2_cast.set_attr("to", target_dtype)
+        ctx.copy_shape(node.output[0], input2_cast.output[0])
+        ctx.set_shape(input2_cast.output[0], target_dtype)
+        nodes.insert(0, input2_cast)
+
+    return nodes
 
 
 NCHW_TO_NHWC = [0, 2, 3, 1]
@@ -1034,21 +1063,49 @@ def rsqrt_op(ctx, node, name, args):
 
 def expanddims_op(ctx, node, name, args):
     # T output = ExpandDims(T input, Tdim dim, @type Tdim)
-    # tensorflow already infers the output shape so we can just take it
+    # T reshaped = Reshape-1(T data, @ints consumed_inputs, @int64 shape)
+    # T expanded = Unsqueeze-1(T data, @ints axes)
     shape = ctx.get_shape(node.output[0])
-    node.type = "Reshape"
-    ctx.remove_input(node, node.input[1])
-    node.set_attr("shape", shape)
-    return node
+    if shape is not None and shape.count(-1) < 2:
+        # tensorflow already infers the output shape so we can just take it
+        shape = ctx.get_shape(node.output[0])
+        node.type = "Reshape"
+        ctx.remove_input(node, node.input[1])
+        node.set_attr("shape", shape)
+
+    # if there is more than one -1 in the shape, Reshape won't support.
+    dim_node = node.inputs[1]
+    if dim_node.is_const():
+        node.type = "Unsqueeze"
+        dim = dim_node.get_tensor_value()[0]
+        node.set_attr("axes", [dim])
+        ctx.remove_input(node, node.input[1])
+        return node
+    raise ValueError("non-const dim is not supported")
 
 
 def expanddims_op7(ctx, node, name, args):
+    # T output = ExpandDims(T input, Tdim dim, @type Tdim), dim is 0-D scalar.
+    # T reshaped = Reshape-5(T data, int64 shape)
+    # T expanded = Unsqueeze-1(T data, @ints axes)
     shape = ctx.get_shape(node.output[0])
-    shape_name = utils.make_name(node.name)
-    ctx.make_const(shape_name, np.array(shape, dtype=np.int64))
-    node.type = "Reshape"
-    node.input[1] = shape_name
-    return node
+    if shape is not None and shape.count(-1) < 2:
+        # tensorflow already infers the output shape so we can just take it
+        shape_name = utils.make_name(node.name)
+        ctx.make_const(shape_name, np.array(shape, dtype=np.int64))
+        node.type = "Reshape"
+        node.input[1] = shape_name
+        return node
+
+    # if there is more than one -1 in the shape, Reshape won't support.
+    dim_node = node.inputs[1]
+    if dim_node.is_const():
+        node.type = "Unsqueeze"
+        dim = dim_node.get_tensor_value()[0]
+        node.set_attr("axes", [dim])
+        ctx.remove_input(node, node.input[1])
+        return node
+    raise ValueError("non-const dim is not supported")
 
 
 def stridedslice_op(ctx, node, name, args):
@@ -1200,14 +1257,28 @@ def multinomial_op(ctx, node, name, args):
 
 
 def topk_op(ctx, node, name, args):
-    k = node.inputs[1].get_tensor_value()
-    node.set_attr("k", k[0])
-    node.type = "TopK"
-    ctx.remove_input(node, node.input[1])
+    # T values, int32 indices = TopKV2(T input, int32 k, @bool sorted=true, @realnumbertype T)
+    # T values, I indices = TopK(T x, @int axis=-1, @int k). I: int64
+    # todo (pengwa): need change get_node_by_name to better handle cases where node output name is
+    # not strictly aligned with node name.
+    nodes = []
+    topk_node_name = node.name
+    topk_output1 = node.output[0]
+    topk_output2 = node.output[1]
 
-    # the second of TopK operator must be INT64 per ONNX requires
-    ctx.override_dtype(port_name(name, 1), onnx_pb.TensorProto.INT64)
-    return node
+    new_topk_name = utils.make_name(topk_node_name)
+    k = node.inputs[1].get_tensor_value()[0]
+    new_topk_node = Node(helper.make_node("TopK", [node.input[0]],
+                                          [topk_output1, utils.port_name(new_topk_name, 1)],
+                                          name=new_topk_name, k=k), ctx)
+    nodes.append(new_topk_node)
+
+    new_cast_name = utils.make_name(topk_node_name)
+    cast_to_int32 = Node(helper.make_node("Cast", [new_topk_node.output[1]],
+                                          [topk_output2], name=new_cast_name, to=onnx_pb.TensorProto.INT32),
+                         ctx)
+    nodes.append(cast_to_int32)
+    return nodes
 
 
 def tile_op7(ctx, node, name, args):
@@ -1771,13 +1842,13 @@ _OPSET_7 = {
     "FusedBatchNorm": (fused_batchnorm_op7, []),
     "FusedBatchNormV2": (fused_batchnorm_op7, []),
     "Greater": (broadcast_op7, []),
-    "Less": (broadcast_op7, []),
+    "Less": (less_op7, []),
     "LogicalAnd": (broadcast_op7, ["And"]),
     "LogicalOr": (broadcast_op7, ["Or"]),
     "Mul": (broadcast_op7, []),
     "Multinomial": (multinomial_op, []),
     "Pow": (direct_op, []),
-    "Range": (range_op, []),
+    "Range": (range_op7, []),
     "RealDiv": (broadcast_op7, ["Div"]),
     "ResizeBilinear": (upsample_op7, ["Upsample", "linear"]),
     "ResizeNearestNeighbor": (upsample_op7, ["Upsample", "nearest"]),
@@ -1795,6 +1866,7 @@ _OPSET_8 = {
 }
 
 _OPSET_9 = {
+    "Erf": (direct_op, []),
     "Fill": (fill_op, []),
 }
 
@@ -1890,30 +1962,88 @@ def rewrite_dropout(g, ops):
 
 
 def rewrite_flatten(g, ops):
-    pattern = \
-        OpTypePattern('Reshape', name='outputs', inputs=[
-            OpTypePattern("*", name="input2"),
-            OpTypePattern('Pack', inputs=[
-                OpTypePattern('StridedSlice', inputs=[
+    pattern_fixed_shape_input = \
+        OpTypePattern('Reshape', name='reshape', inputs=[
+            OpTypePattern("*", name="input"),
+            OpTypePattern('Pack', name="pack", inputs=[
+                OpTypePattern('StridedSlice', name="slice", inputs=[
                     "*", "*", "*", "*",
                 ]),
                 "*",
             ]),
         ])
-    matcher = GraphMatcher(pattern)
-    match_results = list(matcher.match_ops(ops))
-    for match in match_results:
-        inputs2 = match.get_op('input2')
-        outputs = match.get_op('outputs')
-        op_name = utils.make_name("Flatten")
-        out_name = port_name(op_name)
-        new_node = Node(helper.make_node("Flatten", [inputs2.output[0]], [out_name], name=op_name), g)
-        g.replace_all_inputs(ops, outputs.output[0], out_name)
-        to_be_removed = [node for node in match.get_nodes() if node != inputs2]
-        for i in range(len(ops) - 1, -1, -1):
-            if ops[i] in to_be_removed:
-                del ops[i]
-        ops.append(new_node)
+    pattern_non_fixed_shape_input = \
+        OpTypePattern('Reshape', name='reshape', inputs=[
+            OpTypePattern("*", name="input"),
+            OpTypePattern('Pack', name="pack", inputs=[
+                OpTypePattern('StridedSlice', name="slice", inputs=[
+                    OpTypePattern('Shape', inputs=[
+                        OpTypePattern("*", name="input2")
+                    ]),
+                    "*", "*", "*",
+                ]),
+                "*",
+            ]),
+        ])
+    matcher = GraphMatcher(pattern_fixed_shape_input)
+    match_results_1 = list(matcher.match_ops(ops))
+
+    matcher = GraphMatcher(pattern_non_fixed_shape_input)
+    match_results_2 = list(matcher.match_ops(ops))
+
+    match_results = [(match_results_1, True), (match_results_2, False)]
+    for match_results, check_fixed_input_shape in match_results:
+        for match in match_results:
+            input_node = match.get_op('input')
+            reshape_node = match.get_op('reshape')
+            pack_node = match.get_op('pack')
+            slice_node = match.get_op('slice')
+            need_rewrite = pack_node.inputs[1].is_const() and pack_node.inputs[1].get_tensor_value()[0] == -1
+            if not need_rewrite:
+                continue
+
+            input_shape = g.get_shape(reshape_node.input[0])
+            need_rewrite = input_shape is not None
+            if not need_rewrite:
+                continue
+
+            if check_fixed_input_shape:
+                need_rewrite = slice_node.inputs[0].is_const() and \
+                               np.array_equal(list(input_shape), list(slice_node.inputs[0].get_tensor_value()))
+                if not need_rewrite:
+                    continue
+
+            begin = slice_node.inputs[1].get_tensor_value()
+            end = slice_node.inputs[2].get_tensor_value()
+            strides = slice_node.inputs[3].get_tensor_value()
+            need_rewrite = np.array_equal(begin, [0]) and len(end) == 1 and \
+                           np.array_equal(strides, [1]) and end[0] - begin[0] == len(input_shape) - 2
+            if not need_rewrite:
+                continue
+
+            op_name = utils.make_name("Flatten")
+            out_name = port_name(op_name)
+            new_node = Node(helper.make_node("Flatten", [reshape_node.input[0]], [out_name], name=op_name), g)
+
+            last_dim = input_shape[-1]
+            sec_last_dim = input_shape[-2]
+            new_dim = None
+            if last_dim > 0 and sec_last_dim > 0:
+                new_dim = last_dim * sec_last_dim
+            else:
+                new_dim = -1
+
+            g.set_shape(out_name, input_shape[:-2] + [new_dim])
+            g.replace_all_inputs(ops, reshape_node.output[0], out_name)
+            to_be_removed = [node for node in match.get_nodes() if node != input_node]
+
+            new_ops = []
+            for op in ops:
+                if op not in to_be_removed:
+                    new_ops.append(op)
+            new_ops.append(new_node)
+            ops = new_ops
+
     return ops
 
 
@@ -2040,23 +2170,29 @@ def rewrite_logical_compare_with_equal(g, ops):
                                                   to=onnx_pb.TensorProto.FLOAT), g)
                 greater_input_ids.append(new_output)
                 g.set_dtype(cast_node.output[0], onnx_pb.TensorProto.FLOAT)
-                g.copy_shape(ge_op.input[0], cast_node.output[0])
+                g.copy_shape(input_id, cast_node.output[0])
                 nodes_to_append.append(cast_node)
 
         op_name = utils.make_name("Greater")
         out_name = port_name(op_name)
         g_node = Node(helper.make_node("Greater", greater_input_ids, [out_name], name=op_name), g)
+        g.set_dtype(out_name, onnx_pb.TensorProto.BOOL)
+        set_shape_from_inputs_broadcast(g, greater_input_ids, out_name)
+        new_shape = g.get_shape(out_name)
         nodes_to_append.append(g_node)
 
         op_name = utils.make_name("Equal")
         out_name = port_name(op_name)
         e_node = Node(helper.make_node("Equal", ge_op.input, [out_name], name=op_name), g)
+        g.set_dtype(out_name, onnx_pb.TensorProto.BOOL)
+        g.set_shape(out_name, new_shape)
         nodes_to_append.append(e_node)
 
         ge_op.type = "LogicalOr"
         ge_op.input[0] = g_node.output[0]
         ge_op.input[1] = e_node.output[0]
-
+        g.set_dtype(ge_op.output[0], onnx_pb.TensorProto.BOOL)
+        g.set_shape(ge_op.output[0], new_shape)
         ops.extend(nodes_to_append)
     return ops
 
@@ -2067,13 +2203,20 @@ def rewrite_incomplete_type_support(g, ops, impacted_ops):
     This is needed for some tensor ops in opset7 and for some ops in winml-rs5.
     It is not helping performance but better than the model not working at all.
     """
+    ignored_input_index = {
+        "Tile": [1],  # Tile's second input can only be int64
+    }
     new_ops = []
     for op in ops:
         if op.type in impacted_ops:
             cast_inserted = []
             output_dtype = None
+            ignored_inputs = ignored_input_index.get(op.type)
             # insert casts on inputs if the runtime only supports float
             for i, input_node in enumerate(op.inputs):
+                if ignored_inputs and i in ignored_inputs:
+                    continue
+
                 input_name = op.input[i]
                 dtype = g.get_dtype(input_name)
                 if dtype != onnx_pb.TensorProto.FLOAT:
@@ -2108,7 +2251,7 @@ def rewrite_incomplete_type_support_rs5(g, ops):
 
 
 def rewrite_incomplete_type_support_rs6(g, ops):
-    return rewrite_incomplete_type_support(g, ops, ["Slice", "Transpose"])
+    return rewrite_incomplete_type_support(g, ops, ["Slice", "Tile", "Transpose"])
 
 
 def tensorflow_onnx_mapping(g, continue_on_error, custom_op_handlers):
@@ -2255,6 +2398,9 @@ def process_tf_graph(tf_graph, continue_on_error=False, verbose=False, target=No
     onnx_nodes, op_cnt, attr_cnt, output_shapes, dtypes = tensorflow_to_onnx(tf_graph, shape_override)
 
     g = Graph(onnx_nodes, output_shapes, dtypes, target, opset, extra_opset, output_names)
+
+    infer_shape_for_graph(g)
+
     if inputs_as_nchw:
         transpose_inputs(g, inputs_as_nchw)
 
@@ -2272,10 +2418,20 @@ def process_tf_graph(tf_graph, continue_on_error=False, verbose=False, target=No
     if custom_rewriter is not None:
         rewriters.extend(custom_rewriter)
 
-    ops = g.get_nodes()
-    for rewrite in rewriters:
-        ops = rewrite(g, ops)
-        g.set_nodes(ops)
+    try:
+        ops = g.get_nodes()
+        for rewrite in rewriters:
+            ops = rewrite(g, ops)
+            g.set_nodes(ops)
+    except Exception as ex:
+        type_, value_, traceback_ = sys.exc_info()
+        log.error("node %s: exception %s" % (rewrite, ex))
+        ex_ext = traceback.format_exception(type_, value_, traceback_)
+        if continue_on_error:
+            log.info(ex_ext)
+        else:
+            raise ex
+
     topological_sort(g.get_nodes())
 
     if custom_op_handlers is None:
