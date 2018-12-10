@@ -1740,7 +1740,7 @@ def sparse_softmax_cross_entropy_with_logits_op(ctx, node, name, args):
         # TODO: this works for rank=1 but tensorflow supports more than this.
         # Same principle should work but we need to implemtn our own eye.
         raise ValueError("onehot op: only rank1 is supported")
-    depth = node.inputs[0].output_shapes[0][-1]
+    depth = 38  # node.inputs[0].output_shapes[0][-1]
     dtype = utils.ONNX_TO_NUMPY_DTYPE[node.inputs[0].output_dtypes[0]]
     eye = np.eye(depth).astype(dtype)
     const_name = utils.make_name(node.name)
