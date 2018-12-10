@@ -1226,5 +1226,32 @@ class BackendTests(Tf2OnnxBackendTestBase):
         kwargs = {"check_dtype": True}
         self._run_test_case([_OUTPUT], {_INPUT: x_val}, **kwargs)
 
+    def test_sparse_softmax_cross_entropy_with_logits(self):
+        num_class = 5
+        label_val = np.array([3, 2, 0, 4])
+        logits_val = np.random.random((len(label_val), num_class)).astype(np.float32)
+
+        label = tf.placeholder(tf.int32, shape=[None], name=_TFINPUT)
+        logits = tf.placeholder(tf.float32, shape=[None, num_class], name=_TFINPUT1)
+
+        res1 = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=label, logits=logits)
+        _ = tf.identity(res1, name=_TFOUTPUT)
+        '''
+        # since sparse_softmax_cross_entropy_with_logits do a lot computations,
+        # so first find its equal subgraph composed of basic ops
+        one_hot = tf.one_hot(label, depth=num_class)
+        log_softmax = tf.nn.log_softmax(logits=logits, axis=-1)
+        res2 = tf.multiply(np.float32(-1.0), tf.reduce_sum(tf.multiply(one_hot, log_softmax), axis=1))
+        _ = tf.identity(res2, name=_TFOUTPUT1)
+
+        sess = tf.Session()
+        res1 = sess.run(_OUTPUT, feed_dict={_INPUT: label_val, _INPUT1: logits_val})
+        res2 = sess.run(_OUTPUT1, feed_dict={_INPUT: label_val, _INPUT1: logits_val})
+        assert np.allclose(res1, res2)
+        self._run_test_case([_OUTPUT1], {_INPUT: label_val, _INPUT1: logits_val})
+        '''
+        self._run_test_case([_OUTPUT], {_INPUT: label_val, _INPUT1: logits_val})
+
+
 if __name__ == '__main__':
     Tf2OnnxBackendTestBase.trigger(BackendTests)

@@ -182,7 +182,6 @@ def no_op(ctx, node, name, args):
 
 def direct_op(ctx, node, name, args):
     """Take node as is, no updates required"""
-    print("hi")
     return node
 
 
@@ -1723,6 +1722,38 @@ def erf_op(ctx, node, name, args):
     ]
     return nodes
 
+def sparse_softmax_cross_entropy_with_logits_op(ctx, node, name, args):
+    nodes = []
+
+    def mknode(op_type, inputs, outputs=None, **kwargs):
+        op_name = utils.make_name(op_type)
+        if outputs is None:
+            outputs = [port_name(op_name)]
+        new_node = Node(helper.make_node(op_type, inputs, outputs, op_name, **kwargs), ctx)
+        nodes.append(new_node)
+        return new_node
+
+    # make subgraph to implement one_hot, idea comes from onehot_op
+    indices_name = node.input[1]
+    indices_shape = ctx.get_shape(indices_name)
+    if len(indices_shape) != 1:
+        # TODO: this works for rank=1 but tensorflow supports more than this.
+        # Same principle should work but we need to implemtn our own eye.
+        raise ValueError("onehot op: only rank1 is supported")
+    depth = node.inputs[0].output_shapes[0][-1]
+    dtype = utils.ONNX_TO_NUMPY_DTYPE[node.inputs[0].output_dtypes[0]]
+    eye = np.eye(depth).astype(dtype)
+    const_name = utils.make_name(node.name)
+    ctx.make_const(const_name, eye)
+    onehot = mknode("Gather", [const_name, indices_name], axis=0)
+    log_softmax = mknode("LogSoftmax", [node.input[0]])
+    # tf.multiply(np.float32(-1.0), tf.reduce_sum(tf.multiply(one_hot, log_softmax), axis=1))
+    mul1 = mknode("Mul", [onehot.output[0], log_softmax.output[0]])
+    reduce_sum = mknode("ReduceSum", [mul1.output[0]], axes=[1])
+    const_negative_one = ctx.make_const(name="const_negative_one", np_val=np.array(-1).astype(dtype))
+    mul2 = mknode("Mul", [const_negative_one.output[0], reduce_sum.output[0]])
+    res = mknode("Squeeze", [mul2.output[0]], outputs=[node.output[0]], axes=[1])
+    return nodes
 
 # map tensorflow ops to onnx ops. The format below is
 # "TFOP": func_to_map, ["OnnxOp", ...]
@@ -1804,6 +1835,8 @@ _OPSET_4 = {
     "Square": (square_op, []),
     "SquaredDifference": (squareddifference_op, []),
     "Softmax": (direct_op, ["Softmax"]),
+    "LogSoftmax": (direct_op, ["LogSoftmax"]),
+    "SparseSoftmaxCrossEntropyWithLogits": (sparse_softmax_cross_entropy_with_logits_op, []),
     "StopGradient": (identity_op, ["Identity"]),
     "StridedSlice": (stridedslice_op, []),
     "Sub": (broadcast_op, []),
