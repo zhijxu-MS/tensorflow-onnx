@@ -63,7 +63,7 @@ def tflist_to_onnx(node_list, shape_override):
     ignored_attr = ["unknown_rank", "_class", "Tshape", "use_cudnn_on_gpu", "Index", "Tpaddings",
                     "TI", "Tparams", "Tindices", "Tlen", "Tdim", "dynamic_size", "Tmultiples",
                     "output_dtype", "Tblock_shape", "Tcrops", "index_type", "Taxis", "U", "maxval",
-                    "Tout"]
+                    "Tout", "Tlabels"]
     # some stats
     op_cnt = collections.Counter()
     attr_cnt = collections.Counter()
