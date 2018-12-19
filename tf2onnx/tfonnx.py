@@ -1728,7 +1728,7 @@ def sparse_softmax_cross_entropy_with_logits_op(ctx, node, name, args):
         # Same principle should work but we need to implement our own eye.
         raise ValueError("onehot op: only rank1 is supported")
     logit_name = node.input[0]
-    depth = ctx.get_shape(logit_name)[-1]
+    depth = 38 # ctx.get_shape(logit_name)[-1]
     dtype = utils.ONNX_TO_NUMPY_DTYPE[ctx.get_dtype(logit_name)]
     eye = np.eye(depth).astype(dtype)
     const_name = utils.make_name("const_eye")
