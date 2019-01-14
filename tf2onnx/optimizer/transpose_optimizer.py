@@ -89,7 +89,8 @@ class TransposeOptimizer(object):
                 input_shape = self._g.get_shape(op.input[0])
                 if not input_shape:
                     continue
-
+                if input_shape.count(-1) >= 2:
+                    continue
                 new_shape = []
                 # when transpose is NHWC_TO_NCHW
                 if is_nchw_transpose(op) and (input_shape[3] == 1 or (input_shape[1] == 1 and input_shape[2] == 1)):
@@ -176,21 +177,43 @@ class TransposeOptimizer(object):
 
     def _initialize_handlers(self):
         self._handler_map = {
+            # priority from high to low
             "Add": self._add_handler,
             "Concat": self._concat_handler,
             "Identity": self._identity_handler,
-            "LeakyRelu": self._relu_handler,
-            "Max": self._maxmin_handler,
-            "Min": self._maxmin_handler,
             "Mul": self._mul_handler,
             "Pad": self._pad_handler,
-            "ReduceMean": self._reducemean_handler,
-            "Relu": self._relu_handler,
             "Slice": self._slice_handler,
             "Split": self._split_handler,
-            "Tanh": self._tanh_handler,
             "Transpose": self._transpose_handler,
+
+            "elem_one_input": self._relu_handler,
+            "elem_two_input": self._maxmin_handler,
+            "reduce_op": self._reducemean_handler,
         }
+
+    @staticmethod
+    def get_node_general_type(node):
+
+        elem_one_input = ["Cast", "Exp", "LeakyRelu", "Relu", "Tanh"]
+        elem_two_input = ["Max", "Min", "Sub", "Div", "Greater"]
+        reduce_op = ["ReduceMean", "ReduceMax", "ReduceMin", "ReduceSum", "ArgMax"]
+
+        general_ops = elem_one_input + elem_two_input + reduce_op
+
+        if node.type not in general_ops:
+            return node.type
+
+        if node.type in elem_one_input:
+            return "elem_one_input"
+        if node.type in elem_two_input:
+            return "elem_two_input"
+        if node.type in reduce_op:
+            return "reduce_op"
+
+    def get_handler(self, node):
+        node_general_type = self.get_node_general_type(node)
+        return self._handler_map.get(node_general_type, None)
 
     # if there is nodes added, removed, or inputs changed, we need update the output_nodes/output_number etc.
     def _update_graph_nodes(self, nodes_to_extend, nodes_to_remove, has_input_changed=False):
@@ -285,9 +308,9 @@ class TransposeOptimizer(object):
                 log.debug("cannot move transpose down since it met output node %s", p.name)
                 return False
 
-            if p.type in self._handler_map:
-                op_handler = self._handler_map[p.type]
-                return op_handler(trans, p)
+            handler = self.get_handler(p)
+            if handler:
+                return handler(trans, p)
             return False
         # move transpose into branches to let Transposes can be "handled" in each branch
         to_append = []
@@ -297,7 +320,7 @@ class TransposeOptimizer(object):
 
             to_append.append(branch_trans)
         self._update_graph_nodes(to_append, [trans], True)
-        return False
+        return True
 
     def _remove_useless_tranpose(self, trans):
         self._g.replace_all_inputs(self._g.get_nodes(), trans.output[0], trans.input[0])
@@ -357,6 +380,19 @@ class TransposeOptimizer(object):
             self._update_graph_nodes(added_node, None, True)
         return added_node
 
+    def all_transpose_inputs(self, trans, node):
+        # node has two input, and "trans" is one of its input
+        inputs_perm = [node_in.get_attr("perm") for node_in in node.inputs]
+        if inputs_perm[0] == inputs_perm[1]:
+            # two input both are transpose and their perm are same,
+            # so switch seq from ins > trans > sub > out to ins > sub > trans > out
+            node.input[:] = [trans_op.input[0] for trans_op in node.inputs]
+            new_trans = self._g.make_node("Transpose", node.output, {"perm": inputs_perm[0].ints})
+            self._g.replace_all_inputs(self._g.get_nodes(), node.output[0], new_trans.output[0])
+            self._update_graph_nodes([new_trans], [])
+            return True
+        return False
+
     def _add_handler(self, trans, node):
         if node.inputs[1].is_const():
             t_p = trans.inputs[0]
@@ -385,6 +421,8 @@ class TransposeOptimizer(object):
         return False
 
     def _maxmin_handler(self, trans, node):
+        if self.all_transpose_inputs(trans, node):
+            return True
         input_index = self._get_input_index_for_trans(node, trans)
         all_other_inputs = [input_id for i, input_id in enumerate(node.input) if i != input_index]
 
@@ -393,17 +431,17 @@ class TransposeOptimizer(object):
             return False
 
         shapes = [len(self._g.get_shape(i)) for i in all_other_inputs]
-        shapes_not_one_and_four = [s for s in shapes if s not in [1, 4]]
+        shapes_not_one_and_four = [s for s in shapes if s not in [0, 1, 4]]
         if shapes_not_one_and_four:
             return False
 
         for i in all_other_inputs:
             numpy_val = numpy_helper.to_array(self._g.get_initializer(i))
-            rank = np.rank(numpy_val)
+            rank = numpy_val.ndim
             if rank == 4:
                 transposed_val = np.transpose(numpy_val, (0, 3, 1, 2))
                 self._g.update_initializer(i, transposed_val)
-            elif rank == 1:  #  scalar
+            elif rank in [0, 1]:  # scalar
                 # do nothing
                 pass
             else:
@@ -472,13 +510,18 @@ class TransposeOptimizer(object):
         return self._switch_transpose_and_node(node, trans)
 
     def _reducemean_handler(self, trans, node):
-        axes = node.get_attr("axes").ints
+        axes = node.get_attr("axes").ints if "axes" in node.attr else node.get_attr("axis").i
         keepdims = node.get_attr("keepdims")
         # make sure keepdims is 1, then we can do the swap, otherwise, please don't, because
         # once keepdims is not set, original dims are lost, so transpose back won't work well.
         # by default, if keepdims is not specified, it is 1
         if axes == [1, 2] and ((keepdims and keepdims.i == 1) or (not keepdims)):
             node.set_attr("axes", [2, 3])
+            return self._switch_transpose_and_node(node, trans)
+        elif len(axes) == 1:
+            axes = axes[0] + 4 if axes[0] < 0 else axes[0]
+            ind_map = [0, 2, 3, 1]  #  namely the perm of transpose node which is the input of this reduce op
+            node.set_attr("axes", [ind_map[axes]])
             return self._switch_transpose_and_node(node, trans)
         return False
 
@@ -489,7 +532,3 @@ class TransposeOptimizer(object):
             node.set_attr("axes", [0, 2, 3, 1])
             return self._switch_transpose_and_node(node, trans)
         return False
-
-    # todo: consider share a same logic for element-wise op.
-    def _tanh_handler(self, trans, node):
-        return self._switch_transpose_and_node(node, trans)
