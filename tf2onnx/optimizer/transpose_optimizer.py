@@ -53,7 +53,7 @@ class TransposeOptimizer(object):
         # but this is not always a good idea, so the attr gives human right to decide not to move down some transpose.
         # you can let its value to be None, it doesn't affect correctness but may help the performance
         # value meaning: name of the node which consumes output of transpose
-        self.skip_node_names = set([])
+        self.skip_node_names = set(["Max"])
 
     @property
     def nodes(self):
