@@ -49,6 +49,11 @@ class TransposeOptimizer(object):
         self._g.update_proto()
         self._initialize_handlers()
         self.pre_optimize_action()
+        # current strategy is to move transpose down to graph output if possible,
+        # but this is not always a good idea, so the attr gives human right to decide not to move down some transpose.
+        # you can let its value to be None, it doesn't affect correctness but may help the performance
+        # value meaning: name of the node which consumes output of transpose
+        self.skip_node_names = set([])
 
     @property
     def nodes(self):
@@ -147,6 +152,10 @@ class TransposeOptimizer(object):
             self._force_stop = {}
             for n in nodes:
                 if is_nhwc_transpose(n):
+                    trans_output_consumers = self._g.find_output_consumers(n.output[0])
+                    trans_output_consumers = set([i.name for i in trans_output_consumers])
+                    if trans_output_consumers.intersection(self.skip_node_names):
+                        continue
                     if self._handle_nhwc_tranpose(n):
                         no_action = False
                         iteration_cnt += 1
@@ -172,6 +181,7 @@ class TransposeOptimizer(object):
         transpose_cnt = current_counter["Transpose"]
         current_counter.subtract(previous_counter)
         log.info(" %d transpose op(s) left, ops diff after transpose optimization: %s", transpose_cnt, current_counter)
+        log.info("you can use \"skip_node_names\" to control the optimization process and better result may be got")
         if transpose_cnt > 2:
             log.warning("please try add --fold_const to help remove more transpose")
 
