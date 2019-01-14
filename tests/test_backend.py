@@ -316,6 +316,19 @@ class BackendTests(Tf2OnnxBackendTestBase):
         self._conv_test(x_val, kernel_val, strides=strides, padding="VALID",
                         dilations=dilations, rtol=1e-05)
 
+    def test_conv2d_8(self):
+        for input_shape in [[10, 10], [5, 5]]:
+            tf.reset_default_graph()
+            x_val = make_xval((1, 1, *input_shape)).transpose(NCHW_TO_NHWC)
+            w = np.random.random_sample([3, 3, 1, 2]).astype(np.float32)
+            strides = [1, 2, 2, 1]
+
+            x = tf.placeholder(tf.float32, shape=[None] * 4, name=_TFINPUT)
+            kernel = tf.constant(w, dtype=tf.float32, name='k')
+            conv = tf.nn.conv2d(x, kernel, strides=strides, padding="SAME")
+            _ = tf.identity(conv, name=_TFOUTPUT)
+            self._run_test_case([_OUTPUT], {_INPUT: x_val}, rtol=1e-5)
+
     def test_conv2d_transpose(self):
         x_shape = [2, 6, 4, 3]
         output_shape = [2, 13, 9, 2]
