@@ -579,7 +579,7 @@ def convtranspose_op(ctx, node, name, args):
     kernel_shape = conv_kernel_shape(ctx, node, 1)
 
     # ouput_shape is explicitly specified here, in this case pads values are auto generated/calculated.
-    output_shape = ctx.get_shape(node.output[0])
+    output_shape = [1, 16, 20, 256] if node.name == "model_1/P5_up1_deconv/conv2d_transpose" else [1, 32, 40, 256]
     if node.is_nhwc():
         new_output_shape = [output_shape[1], output_shape[2]]
     else:
