@@ -901,7 +901,17 @@ def concatv2_op(ctx, node, name, args):
 
 def dynamic_slice_op(ctx, node, name, args):
     # tf op, T output = Slice(T input, Index begin, Index size, @type Index)
+    # tf op, T output = StridedSlice(T input, Index begin, Index end, Index stride @type Index)
     # onnx op, T output = DynamicSlice(T input, Tind starts, Tind ends, (optional)Tind axes), ends are exclusive
+
+    # if begin, size and stride info are const then fall back to original converter logic
+    if all([node.type == "Const" for node in node.inputs[1:]]):
+        return stridedslice_op(ctx, node, name, args)
+
+    if node.type == "StridedSlice":
+        strides = node.inputs[3].get_tensor_value()
+        utils.make_sure(len(strides) == 1, "only support one dims")
+        utils.make_sure(strides[0] == 1, "only support stride one")
 
     starts = node.inputs[1]
     size = node.inputs[2]
@@ -1907,6 +1917,7 @@ _OPSET_9 = {
     "ResizeBilinear": (upsample_op9, ["Upsample", "linear"]),
     "ResizeNearestNeighbor": (upsample_op9, ["Upsample", "nearest"]),
     "Slice": (dynamic_slice_op, []),
+    "StridedSlice": (dynamic_slice_op, []),
 }
 
 _OPSETS = [
