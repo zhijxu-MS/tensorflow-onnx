@@ -1296,6 +1296,9 @@ def minmax_op(ctx, node, name, args):
 
 def pack_op(ctx, node, name, args):
     # hack to make up for the missing onnx pack op
+    if len(node.inputs) == 1:
+        ctx.replace_all_inputs(ctx.get_nodes(), node.output[0], node.input[0])
+        return None
 
     pack_shape = ctx.get_shape(node.output[0])
     if not pack_shape:
