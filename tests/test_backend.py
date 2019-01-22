@@ -180,6 +180,16 @@ class BackendTests(Tf2OnnxBackendTestBase):
         _ = tf.identity(op, name=_TFOUTPUT)
         self._run_test_case([_OUTPUT], {_INPUT: x_val})
 
+    @unittest.skipIf(*support_op_conversion_since(9, "Gemm is used"))
+    def test_eye(self):
+        for row_or_col, np_dtype, tf_dtype in zip([0, 1], [np.float32, np.int32], [tf.float32, tf.int32]):
+            tf.reset_default_graph()
+            x_val = np.array([[1.0, 2.0, -3.0, -4.0, 5.0]] * 2, dtype=np_dtype)
+            x = tf.placeholder(tf_dtype, shape=[None] * 2, name=_TFINPUT)
+            x_ = tf.eye(tf.shape(x)[row_or_col])
+            _ = tf.identity(x_, name=_TFOUTPUT)
+            self._run_test_case([_OUTPUT], {_INPUT: x_val}, rtol=1e-05)
+
     @unittest.skipIf(*support_op_conversion_since(7, "trig"))
     def test_trig_ops(self):
         for op in [tf.sin, tf.cos, tf.tan, tf.asin, tf.acos, tf.atan]:

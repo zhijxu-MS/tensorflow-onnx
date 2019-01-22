@@ -2230,6 +2230,77 @@ def rewrite_logical_compare_with_equal(g, ops):
     return ops
 
 
+def rewrite_eye(g, ops):
+    # tf.eye is implemented by a subgraph which contained an op "MatrixDiag" un-supported directly in onnx
+    # but onnx op EyeLike can be used instead of the subgraph
+    # for now, only tf.eye(tf.shape(x)[i]) are supported
+    # otherwise a generator op should be needed and onnx is going to support it so wait for now.
+    # the following pattern only match subgraph of tf.eye(tf.shape(x)[i]), not tf.eye(tf.shape(x)[0], tf.shape[1])
+    pattern = \
+        OpTypePattern("MatrixDiag", name="output_eye_matrix", inputs=[
+            OpTypePattern("Fill", inputs=[
+                OpTypePattern("Const"),
+                OpTypePattern("ConcatV2", inputs=[
+                    "*",
+                    "*",
+                    OpTypePattern("Pack", inputs=[
+                        OpTypePattern("Minimum", name="min_node")
+                    ])
+                ])
+            ])
+        ])
+    matcher = GraphMatcher(pattern, allow_reorder=True)
+    match_results = list(matcher.match_ops(ops))
+    nodes = []
+    for match_result in match_results:
+
+        old_output = match_result.get_op("output_eye_matrix")
+        output_dtype = g.get_dtype(old_output.output[0])
+
+        min_node = match_result.get_op("min_node")
+        num_rows = min_node.inputs[0]
+        num_columns = min_node.inputs[1]
+        utils.make_sure([num_rows.type, num_columns.type] == ["StridedSlice"]*2, "only support tf.eye(tf.shape) for now")
+
+        shape_ops = [num_rows.inputs[0], num_columns.inputs[0]]
+        x, y = [node.inputs[0] for node in shape_ops]
+        utils.make_sure([len(g.get_shape(node.output[0])) for node in [x, y]] == [2, 2], "only support 2dims case")
+        # onnx op "EyeLike" need a 2D tensor, so generate it
+        # the way to generate it: get row and column vector, and then GEMM to get the 2D tensor
+        col_and_row = [None]*2
+        transpose_info = [0]*2
+        for ind, node in enumerate([num_rows, num_columns]):
+            beg, end, stride = [slice_info_node.get_tensor_value() for slice_info_node in node.inputs[1:]]
+            if (beg, end, stride) == ([0], [1], [1]):
+                line = g.make_node("Slice", x.output, attr={"axes": [1], "starts": [0], "ends": [1]})
+                if ind == 1:  # row vector is needed while a row vector is get, so need transpose
+                    transpose_info[1] = 1
+            elif (beg, end, stride) == ([1], [2], [1]):
+                line = g.make_node("Slice", x.output, attr={"axes": [0], "starts": [0], "ends": [1]})
+                if ind == 0:  # column vector is needed
+                    transpose_info[0] = 1
+            else:
+                raise ValueError("not supported case shows up")
+
+            col_and_row[ind] = line.output[0]
+            nodes.append(line)
+
+        zero_val = np.array([0]).astype(utils.ONNX_TO_NUMPY_DTYPE[g.get_dtype(x.output[0])])
+        zero = g.make_const(utils.make_name("zero"), zero_val)
+        gemm = g.make_node("Gemm", [*col_and_row, zero.output[0]], attr={"transA": transpose_info[0], "transB": transpose_info[1]})
+
+        new_output = g.make_node("EyeLike", gemm.output, attr={"dtype": output_dtype},
+                                 name=old_output.name, outputs=old_output.output)
+
+        nodes.extend([gemm, new_output])
+        ops = g.get_nodes()
+        ops.remove(old_output)  # this will make subgraph of tf.eye dangled, so nodes in the subgraph can be deleted
+        ops.extend(nodes)
+        g.set_nodes(ops)
+
+    return g.get_nodes()
+
+
 def rewrite_incomplete_type_support(g, ops, impacted_ops):
     """
     for ops that have inclomplete type support, insert casts.
@@ -2285,7 +2356,7 @@ def rewrite_incomplete_type_support_rs5(g, ops):
 
 
 def rewrite_incomplete_type_support_rs6(g, ops):
-    return rewrite_incomplete_type_support(g, ops, ["Div", "ReduceSum", "Slice", "Split", "Tile", "Transpose"])
+    return rewrite_incomplete_type_support(g, ops, ["Div", "Gemm", "ReduceSum", "Slice", "Split", "Tile", "Transpose"])
 
 
 def tensorflow_onnx_mapping(g, continue_on_error, custom_op_handlers):
@@ -2476,7 +2547,7 @@ def process_tf_graph(tf_graph, continue_on_error=False, verbose=False, target=No
     # bi-directional re-writer should be placed after single directional re-writer
     rewriters = [rewrite_transpose, rewrite_flatten,
                  rewrite_random_uniform, rewrite_random_uniform_fold_const,
-                 rewrite_random_normal, rewrite_dropout,
+                 rewrite_random_normal, rewrite_dropout, rewrite_eye,
                  rewrite_single_direction_lstm, rewrite_bi_direction_lstm,
                  rewrite_single_direction_gru, rewrite_single_direction_grublock,
                  rewrite_bi_direction_gru, rewrite_logical_compare_with_equal,
