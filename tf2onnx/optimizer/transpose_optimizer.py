@@ -94,7 +94,7 @@ class TransposeOptimizer(object):
                 input_shape = self._g.get_shape(op.input[0])
                 if not input_shape:
                     continue
-                if input_shape.count(-1) >= 2:
+                if list(input_shape).count(-1) >= 2:
                     continue
                 new_shape = []
                 # when transpose is NHWC_TO_NCHW
