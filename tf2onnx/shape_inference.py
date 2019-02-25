@@ -197,6 +197,23 @@ def infer_input_shapes(g, node):
 
 
 def infer_output_shapes_with_partial_inputs(g, node):
+    if node.type == "Gather":
+        # uses the follwing link to know how to infer shape of output
+        # https://www.tensorflow.org/api_docs/python/tf/gather
+        shape_params = g.get_shape(node.input[0])
+        if shape_params is None:
+            return False
+
+        shape_indices = g.get_shape(node.input[1])
+        if len(node.input) == 2:
+            axis = 0
+        else:
+            axis = node.input[2].get_tensor_value()
+        # -1 is because indices values is unknown
+        shape = shape_params[:axis] + [-1]*len(shape_indices) + shape_indices[axis+1:]
+        g.set_shape(node.output[0], shape)
+        return True
+
     if node.type == "Merge":
         s1 = g.get_shape(node.input[0])
         s2 = g.get_shape(node.input[1])
