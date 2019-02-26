@@ -457,7 +457,7 @@ def add_padding(ctx, node, kernel_shape, strides, dilations=None, spatial=2):
                 output_shape = spatial_map(output_shape, NHWC_TO_NCHW)
             # calculate pads
             if any(input_shape[i + 2] == -1 for i in range(spatial)):
-                log.warning("node %s has unknown dim %s for pads calculation, fallback to auto_pad" % (
+                log.debug("node %s has unknown dim %s for pads calculation, fallback to auto_pad" % (
                     node.name, str(input_shape)))
                 node.set_attr("auto_pad", "SAME_UPPER")
             else:
@@ -2248,7 +2248,7 @@ def rewrite_incomplete_type_support(g, ops, impacted_ops):
                 input_name = op.input[i]
                 dtype = g.get_dtype(input_name)
                 if dtype is None:
-                    log.warning("Adding Cast for op %s (type is %s)' input: %s, dtype should not be None",
+                    log.debug("Adding Cast for op %s (type is %s)' input: %s, dtype should not be None",
                                 op.name, op.type, input_name)
 
                 if dtype != onnx_pb.TensorProto.FLOAT:
