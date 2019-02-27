@@ -783,6 +783,18 @@ def concatv2_op(ctx, node, name, args):
         return
 
 
+def dynamic_slice_op(ctx, node, name, args):
+    # tf op, T output = Slice(T input, Index begin, Index size, @type Index)
+    # onnx op, T output = DynamicSlice(T input, Tind starts, Tind ends, (optional)Tind axes), ends are exclusive
+
+    starts = node.inputs[1]
+    size = node.inputs[2]
+    ends = ctx.make_node("Add", [starts.output[0], size.output[0]])
+    new_slice = ctx.make_node("DynamicSlice", [*node.input[0:2], ends.output[0]],
+                              name=node.name, outputs=node.output)
+    return [ends, new_slice]
+
+
 def slice_op(ctx, node, name, args):
     # T output = Slice(T input, Index begin, Index size, @type Index)
     # T output = Slice(T data, @INTS axes, @INTS ends, @INTS starts)
@@ -1803,6 +1815,7 @@ _OPSET_9 = {
     "Asinh": (direct_op, []),
     "Atanh": (direct_op, []),
     "Cosh": (direct_op, []),
+    "Slice": (dynamic_slice_op, []),
     "Erf": (direct_op, []),
     "Fill": (fill_op, []),
     "Greater": (logical_compare_op, []),
