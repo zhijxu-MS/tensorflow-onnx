@@ -789,6 +789,8 @@ def dynamic_slice_op(ctx, node, name, args):
 
     starts = node.inputs[1]
     size = node.inputs[2]
+    if starts.is_const() and size.is_const():
+        return slice_op(ctx, node, name, args)
     ends = ctx.make_node("Add", [starts.output[0], size.output[0]])
     new_slice = ctx.make_node("DynamicSlice", [*node.input[0:2], ends.output[0]],
                               name=node.name, outputs=node.output)
@@ -800,7 +802,12 @@ def slice_op(ctx, node, name, args):
     # T output = Slice(T data, @INTS axes, @INTS ends, @INTS starts)
     starts = node.inputs[1].get_tensor_value()
     size = node.inputs[2].get_tensor_value()
-    ends = np.add(starts, size)
+    ends = []
+    for length, start_ind in zip(size, starts):
+        if length == -1:
+            ends.append(sys.maxsize)
+        else:
+            ends.append(start_ind + length)
     ctx.remove_input(node, node.input[2])
     ctx.remove_input(node, node.input[1])
     node.set_attr("starts", starts)
