@@ -291,6 +291,8 @@ class Test(object):
         graph_def = tf2onnx.tfonnx.tf_optimize(inputs, self.output_names, graph_def, fold_const)
         shape_override = {}
         g = tf.import_graph_def(graph_def, name='')
+        sess = tf.Session(config=tf.ConfigProto(allow_soft_placement=True), graph=g)
+        tf_results = self.run_tensorflow(sess, inputs)
         with tf.Session(config=tf.ConfigProto(allow_soft_placement=True), graph=g) as sess:
 
             # fix inputs if needed

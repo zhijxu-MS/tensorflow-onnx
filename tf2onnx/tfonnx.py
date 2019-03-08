@@ -573,11 +573,13 @@ def convtranspose_op(ctx, node, name, args):
 
     # ouput_shape is explicitly specified here, in this case pads values are auto generated/calculated.
     output_shape = [1, 16, 20, 256] if node.name == "model_1/P5_up1_deconv/conv2d_transpose" else [1, 32, 40, 256]
+    pads = [1, 1,
+            1, 1]
     if node.is_nhwc():
         new_output_shape = [output_shape[1], output_shape[2]]
     else:
         new_output_shape = [output_shape[2], output_shape[3]]
-    node.set_attr("output_shape", new_output_shape)
+    node.set_attr("pads", pads)
 
     strides = conv_dims_attr(node, "strides")
     conv_dims_attr(node, "dilations")
