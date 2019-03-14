@@ -193,6 +193,7 @@ class TransposeOptimizer(object):
             "Identity": self._identity_handler,
             "Mul": self._mul_handler,
             "Pad": self._pad_handler,
+            "Shape": self._shape_handler,
             "Slice": self._slice_handler,
             "Split": self._split_handler,
             "Transpose": self._transpose_handler,
@@ -542,3 +543,21 @@ class TransposeOptimizer(object):
             node.set_attr("axes", [0, 2, 3, 1])
             return self._switch_transpose_and_node(node, trans)
         return False
+
+    def _shape_handler(self, trans, node):
+        # input > trans > shape  can be changed into  input > shape > gather^M
+        if not self._transpose_has_single_consumer_node([trans]):
+            return False
+        output_shape = self._g.get_shape(node.output[0])
+        output_dtype = self._g.get_dtype(node.output[0])
+        shape_node = self._g.make_node("Shape", [trans.input[0]])
+        const_node = self._g.make_const("Const", np.array(trans.get_attr("perm").ints))
+        gather_node = self._g.make_node("Gather", [shape_node.output[0], const_node.output[0]], outputs=node.output)
+        self._g.set_shape(gather_node.output[0], output_shape)
+        self._g.set_dtype(gather_node.output[0], output_dtype)
+        ops = self._g.get_nodes()
+        ops.remove(trans)
+        ops.remove(node)
+        ops.extend([shape_node, const_node, gather_node])
+        self._g.set_nodes(ops)
+        return True
