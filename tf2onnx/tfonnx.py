@@ -792,6 +792,7 @@ def dynamic_slice_op(ctx, node, name, args):
     if starts.is_const() and size.is_const():
         return slice_op(ctx, node, name, args)
     ends = ctx.make_node("Add", [starts.output[0], size.output[0]])
+    ctx.remove_node(node.name)
     new_slice = ctx.make_node("DynamicSlice", [*node.input[0:2], ends.output[0]],
                               name=node.name, outputs=node.output)
     return [ends, new_slice]
