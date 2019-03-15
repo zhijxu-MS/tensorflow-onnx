@@ -1658,9 +1658,19 @@ def where_op(ctx, node, name, args):
     return [node, transpose_node]
 
 
+def non_max_suppression_op(ctx, node, name, args):
+    # in tf: T_y select_indices = NonMaxSuppressionV2(T boxes, T scores, int32 max_output_size, float 32 iou_threshold)
+    # in onnx NonMaxSuppressionV2(boxes, scores, max_output_size, @float32 iou_threshold, @float32 score_threshold)
+    iou_threshold = node.inputs[3].get_tensor_value()
+    node.set_attr("iou_threshold", iou_threshold)
+    node.domain = "ONNXRUNTIME_CONTRIB"
+    del node.input[3]
+    return node
+
 # map tensorflow ops to onnx ops. The format below is
 # "TFOP": func_to_map, ["OnnxOp", ...]
-#
+
+
 _OPSET_4 = {
     "Abs": (direct_op, []),
     "Add": (broadcast_op, []),
@@ -1837,6 +1847,7 @@ _OPSET_9 = {
 
 _OPSET_10 = {
     "TopKV2": (direct_op, ["TopK"]),
+    "NonMaxSuppressionV2": (non_max_suppression_op, ["NonMaxSuppression"]),
 }
 
 _OPSETS = [
