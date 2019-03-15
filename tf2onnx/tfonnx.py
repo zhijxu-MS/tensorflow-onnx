@@ -1835,6 +1835,10 @@ _OPSET_9 = {
     "Where": (where_op, []),
 }
 
+_OPSET_10 = {
+    "TopKV2": (direct_op, ["TopK"]),
+}
+
 _OPSETS = [
     (4, _OPSET_4),
     (5, _OPSET_5),
@@ -1842,6 +1846,7 @@ _OPSETS = [
     (7, _OPSET_7),
     (8, _OPSET_8),
     (9, _OPSET_9),
+    (10, _OPSET_10),
 ]
 
 
