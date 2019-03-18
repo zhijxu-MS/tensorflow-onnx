@@ -618,11 +618,14 @@ def convtranspose_op9(ctx, node, name, args):
     # output dtype of onnx "shape" is int64 while in tf dtype could be specified
     added_nodes = []
     input_shape = ctx.make_node("Shape", [node.input[2]])
+    hw_indices = ctx.make_const(utils.make_name("hw_indices"), np.array([1, 2]).astype(np.int64))
+    input_shape_hw = ctx.make_node("Gather", [input_shape.output[0], hw_indices.output[0]])
     output_shape = node.inputs[0]
     if ctx.get_dtype(output_shape.output[0]) != onnx_pb.TensorProto.INT64:
         output_shape = ctx.make_node("Cast", [output_shape.output[0]], attr={"to": onnx_pb.TensorProto.INT64})
         added_nodes.append(output_shape)
-    kernel_shape_hw = list(ctx.get_shape(node.input[1]))[2:]
+    output_shape_hw = ctx.make_node("Gather", [output_shape.output[0], hw_indices.output[0]])
+    kernel_shape_hw = list(ctx.get_shape(node.input[1]))[0:2]
     kernel_shape = ctx.make_const(make_name("const_convtrans"), np.array(kernel_shape_hw).astype(np.int64))
     strides = conv_dims_attr(node, "strides")
     utils.make_sure(len(strides) == 2, "only stride of H and W needed")
@@ -632,26 +635,26 @@ def convtranspose_op9(ctx, node, name, args):
     const_one = ctx.make_const(make_name("cosnt_one"), np.array([1]).astype(np.int64))
     const_two = ctx.make_const(make_name("cosnt_two"), np.array([2]).astype(np.int64))
 
-    tmp0 = ctx.make_node("Sub", [input_shape.output[0], const_one.output[0]])
+    tmp0 = ctx.make_node("Sub", [input_shape_hw.output[0], const_one.output[0]])
     tmp1 = ctx.make_node("Mul", [stride_node.output[0], tmp0.output[0]])
     tmp2 = ctx.make_node("Add", [tmp1.output[0], kernel_shape.output[0]])
-    total_pads = ctx.make_node("Sub", [tmp2.output[0], output_shape.output[0]], dtypes=[onnx_pb.TensorProto.INT64])
+    total_pads = ctx.make_node("Sub", [tmp2.output[0], output_shape_hw.output[0]], dtypes=[onnx_pb.TensorProto.INT64])
     pads_end = ctx.make_node("Div", [total_pads.output[0], const_two.output[0]], dtypes=[onnx_pb.TensorProto.INT64])
     pads_beg = ctx.make_node("Sub", [total_pads.output[0], pads_end.output[0]])
     pads = ctx.make_node("Concat", [pads_beg.output[0], pads_end.output[0]], attr={"axis": 0})
 
-    added_nodes.extend([input_shape, kernel_shape, stride_node, const_zero, const_one, const_two,
+    added_nodes.extend([input_shape, hw_indices, input_shape_hw, output_shape_hw, kernel_shape, stride_node, const_zero, const_one, const_two,
                         tmp0, tmp1, tmp2, total_pads, pads_end, pads_beg, pads])
     # set node's attrs, Note: output_padding, group are left default.
     conv_dims_attr(node, "dilations")
     kernel_shape = conv_kernel_shape(ctx, node, 1)
 
-    # set node's inputs from (output_shape, filter, input_tensor) to (input_tensor, filter, Bias, pads)
+    # set node's inputs from (output_shape, filter, input_tensor) to (input_tensor, filter, pads, Bias)
     node.input[0] = node.input[2]
-    node.input[2] = const_zero.output[0]
-    node.input.append(pads.output[0])
-
-    nodes = conv_convert_inputs(ctx, node, input_indices=[0, 1], with_kernel=True)
+    node.input[2] = pads.output[0]
+    # node.input.append(const_zero.output[0])
+    node.domain = "com.microsoft"
+    nodes = conv_convert_inputs(ctx, node, with_kernel=True)
     return added_nodes + nodes
 
 
@@ -1963,7 +1966,7 @@ _OPSET_9 = {
     "Erf": (direct_op, []),
     # "Fill": (fill_op, []),
     "Sinh": (direct_op, []),
-    "Conv2DBackpropInput": (convtranspose_op9, ["ConvTranspose"]),
+    "Conv2DBackpropInput": (convtranspose_op9, ["ConvTransposeWithDynamicPads"]),
     "Cosh": (direct_op, []),
     "Asinh": (direct_op, []),
     "Acosh": (direct_op, []),
