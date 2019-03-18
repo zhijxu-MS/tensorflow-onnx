@@ -646,10 +646,10 @@ def convtranspose_op9(ctx, node, name, args):
     conv_dims_attr(node, "dilations")
     kernel_shape = conv_kernel_shape(ctx, node, 1)
 
-    # set node's inputs from (output_shape, filter, input_tensor) to (input_tensor, filter, Bias, pads)
+    # set node's inputs from (output_shape, filter, input_tensor) to (input_tensor, filter, pads, Bias)
     node.input[0] = node.input[2]
-    node.input[2] = const_zero.output[0]
-    node.input.append(pads.output[0])
+    node.input[2] = pads.output[0]
+    node.input.append(const_zero.output[0])
 
     nodes = conv_convert_inputs(ctx, node, input_indices=[0, 1], with_kernel=True)
     return added_nodes + nodes
@@ -1963,7 +1963,7 @@ _OPSET_9 = {
     "Erf": (direct_op, []),
     # "Fill": (fill_op, []),
     "Sinh": (direct_op, []),
-    "Conv2DBackpropInput": (convtranspose_op9, ["ConvTranspose"]),
+    "Conv2DBackpropInput": (convtranspose_op9, ["ConvTransposeWithDynamicPads"]),
     "Cosh": (direct_op, []),
     "Asinh": (direct_op, []),
     "Acosh": (direct_op, []),
