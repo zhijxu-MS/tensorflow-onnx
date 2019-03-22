@@ -323,7 +323,9 @@ def reshape_op(ctx, node, name, args):
     shape = shape_node.get_tensor_value()
     if shape is None:
         log.error("Reshape on node %s does not have a const shape", node.name)
-        return None
+        return
+    dim_less_than_zero = len([i for i in shape if i == -1])
+    utils.make_sure(dim_less_than_zero > 1, "Target shape may not have multiple -1 dimensions")
     ctx.remove_input(node, node.input[1])
     node.set_attr("shape", shape)
     ctx.set_shape(node.output[0], shape)
