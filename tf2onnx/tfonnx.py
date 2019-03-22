@@ -651,8 +651,8 @@ def convtranspose_op9(ctx, node, name, args):
     # set node's inputs from (output_shape, filter, input_tensor) to (input_tensor, filter, pads, Bias)
     node.input[0] = node.input[2]
     node.input[2] = pads.output[0]
-    node.input.append(const_zero.output[0])
-
+    # node.input.append(const_zero.output[0])
+    node.domain = "com.microsoft"
     nodes = conv_convert_inputs(ctx, node, input_indices=[0, 1], with_kernel=True)
     return added_nodes + nodes
 
