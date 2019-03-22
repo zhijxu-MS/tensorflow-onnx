@@ -387,9 +387,10 @@ class Graph(object):
     def make_const(self, name, np_val, skip_conversion=False):
         """Make a new constant in the graph"""
         onnx_tensor = numpy_helper.from_array(np_val, name)
+        dtype = onnx_tensor.data_type
         self.add_initializer(onnx_tensor)
         node = self.make_node("Const", [], outputs=[name], name=name, attr={"value": onnx_tensor},
-                              skip_conversion=skip_conversion)
+                              skip_conversion=skip_conversion, dtypes=[dtype])
         return node
 
     def make_node(self, op_type, inputs, attr=None, output_count=1, outputs=None, skip_conversion=True,
