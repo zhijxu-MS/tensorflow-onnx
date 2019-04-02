@@ -1159,6 +1159,42 @@ def reorganize_data_op(ctx, node, name, args):
     conv_convert_inputs(ctx, node, with_kernel=False)
 
 
+def batch_to_spacend_op(ctx, node, name, args):
+    # https://www.tensorflow.org/api_docs/cc/class/tensorflow/ops/batch-to-space-n-d.html
+    # the above link says the data format of input tensor should be (batch, spatial_shape, remaining_shape)
+    # and we only support 4D here, so the data format is NHWC
+    # onnx op "DepthToSpace" does same work on input tensor expect that it work on "C", and it only supports NCHW
+    # T out = BatchToSpaceND(T input, int32 block_shape, int32 crops)
+    input_tensor = node.inputs[0]
+    blocksize = node.inputs[1].get_tensor_value()
+    crops = node.inputs[2].get_tensor_value()
+
+    utils.make_sure(len(ctx.get_shape(input_tensor.output[0])) == 4, "only supports 4D for now")
+    utils.make_sure(len(blocksize) == 2 and blocksize[0] == blocksize[1],
+                    "only support same blocksize at different dims")
+
+    ctx.remove_node(node.name)
+    # NHWC TO CNHW, so onnx op will work on "N" which is same as tensorflow
+    trans1 = ctx.make_node("Transpose", input_tensor.output, {"perm": [3, 0, 1, 2]})
+    reorganize_node = ctx.make_node(node.type, trans1.output, attr={"blocksize": blocksize[0]})
+    trans2 = ctx.make_node("Transpose", reorganize_node.output, {"perm": [1, 2, 3, 0]})
+
+    # implement crop logic, the data format is NHWC.
+    slice_axis = [1, 2]
+    top, bottom = crops[0]
+    left, right = crops[1]
+    starts = [top, left]
+    ends = []
+    for end in [bottom, right]:
+        if end != 0:
+            ends.append(-end)
+        else:
+            ends.append(np.iinfo(np.int32).max)
+
+    slice_op = ctx.make_node("Slice", trans2.output, attr={"axes": slice_axis, "ends": ends, "starts": starts},
+                             name=node.name, outputs=node.output)
+
+
 def minmax_op(ctx, node, name, args):
     # tensorflow minimum/maximum does support broadcast, onnx < opset 8 does not.
     # handle this by doing something like:
@@ -1837,6 +1873,7 @@ _OPSET_4 = {
     "TopKV2": (topk_op, []),
     "SpaceToDepth": (reorganize_data_op, []),
     "DepthToSpace": (reorganize_data_op, []),
+    "BatchToSpaceND": (batch_to_spacend_op, ["DepthToSpace"]),
     "Pack": (pack_op, []),
     "Unpack": (unpack_op, []),
     "Erf": (erf_op, []),
