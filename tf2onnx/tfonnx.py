@@ -1968,7 +1968,7 @@ _OPSET_9 = {
     "Erf": (direct_op, []),
     # "Fill": (fill_op, []),
     "Sinh": (direct_op, []),
-    "Conv2DBackpropInput": (convtranspose_op9, ["ConvTransposeWithDynamicPads"]),
+    "Conv2DBackpropInput": (convtranspose_op, ["ConvTranspose"]),
     "Cosh": (direct_op, []),
     "Asinh": (direct_op, []),
     "Acosh": (direct_op, []),
