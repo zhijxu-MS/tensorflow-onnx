@@ -1669,13 +1669,21 @@ def where_op(ctx, node, name, args):
 
 
 def non_max_suppression_op(ctx, node, name, args):
-    # in tf: T_y select_indices = NonMaxSuppressionV2(T boxes, T scores, int32 max_output_size, float 32 iou_threshold)
-    # in onnx NonMaxSuppressionV2(boxes, scores, max_output_size, @float32 iou_threshold, @float32 score_threshold)
-    iou_threshold = node.inputs[3].get_tensor_value()
-    node.set_attr("iou_threshold", iou_threshold)
-    node.domain = "ONNXRUNTIME_CONTRIB"
-    del node.input[3]
-    return node
+    # in tf: T_y select_indices = NonMaxSuppressionV2(T boxes, T scores,
+    #                                                 int32 max_output_size, float iou_threshold, float score_threshold)
+    # in onnx NonMaxSuppressionV2(boxes, scores, max_output_size, float32 iou_threshold, float32 score_threshold)
+    # the last 3 params are optional
+    node.domain = "com.microsoft"
+    # tf boxes is 2D ([boxes_num, 4]) while onnx is 3D ([num_batches, boxes_num, 4])
+    # tf scores is 1D ([boxes_num])while onnx is 2D ([num_batches, num_classes, boxes_num])
+    # onnx output is [num_selected_boxes, 3], the meaning of last dim is [batch_index, class_index, box_index]
+    # while tf's output is [num_selected_boxes]
+    ctx.insert_new_node_on_input(node, "Unsqueeze", node.input[0], axes=[0])
+    ctx.insert_new_node_on_input(node, "Unsqueeze", node.input[1], axes=[0, 1])
+    slice_op = ctx.insert_new_node_on_output("Slice", node.output[0], name=utils.make_name("slice"),
+                                             axes=[1], ends=[3], starts=[2])
+    ctx.insert_new_node_on_output("Squeeze", slice_op.output[0], name=utils.make_name("squeeze"), axes=[1])
+
 
 # map tensorflow ops to onnx ops. The format below is
 # "TFOP": func_to_map, ["OnnxOp", ...]
@@ -1854,6 +1862,7 @@ _OPSET_9 = {
     "Sinh": (direct_op, []),
     "Where": (where_op, []),
     "NonMaxSuppressionV2": (non_max_suppression_op, ["NonMaxSuppression"]),
+    "NonMaxSuppressionV3": (non_max_suppression_op, ["NonMaxSuppression"]),
 }
 
 

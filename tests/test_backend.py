@@ -578,6 +578,17 @@ class BackendTests(Tf2OnnxBackendTestBase):
         _ = tf.identity(x_, name=_TFOUTPUT)
         self._run_test_case([_OUTPUT], {_INPUT: x_val})
 
+    @check_opset_min_version(9, "NonMaxSuppression")
+    def test_non_max_suppression(self):
+        box_num = 10
+        boxes_val = np.random.random_sample([box_num, 4]).astype(np.float32)
+        scores_val = np.random.random_sample([box_num]).astype(np.float32)
+        boxes = tf.placeholder(tf.float32, shape=[None, 4], name=_TFINPUT)
+        scores = tf.placeholder(tf.float32, shape=[None], name=_TFINPUT1)
+        res = tf.image.non_max_suppression(boxes, scores, max_output_size=int(box_num/2))
+        _ = tf.identity(res, name=_TFOUTPUT)
+        self._run_test_case([_OUTPUT], {_INPUT: boxes_val, _INPUT1: scores_val})
+
     @check_onnxruntime_incompatibility("Mul")
     def test_square(self):
         x_val = np.array([1.0, 2.0, -3.0, -4.0], dtype=np.float32).reshape((2, 2))
