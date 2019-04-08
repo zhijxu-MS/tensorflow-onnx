@@ -377,8 +377,9 @@ def conv_convert_inputs(ctx, node, with_kernel=False, new_kernel_shape=None,
                 transpose.set_attr("perm", NHWC_TO_NCHW)
                 transpose.skip_conversion = True
                 shape = ctx.get_shape(input_name)
-                new_shape = spatial_map(shape, NHWC_TO_NCHW)
-                ctx.set_shape(transpose.output[0], new_shape)
+                if shape is not None:
+                    new_shape = spatial_map(shape, NHWC_TO_NCHW)
+                    ctx.set_shape(transpose.output[0], new_shape)
             parent.data_format = "NCHW"
 
     # kernel must to be transposed
@@ -2241,7 +2242,7 @@ def rewrite_incomplete_type_support_rs5(g, ops):
 
 
 def rewrite_incomplete_type_support_rs6(g, ops):
-    return rewrite_incomplete_type_support(g, ops, ["Div", "IsNaN", "ReduceSum", "Slice", "Split", "Tile", "Transpose"])
+    return rewrite_incomplete_type_support(g, ops, ["Div", "IsNaN", "Min", "ReduceSum", "Slice", "Split", "Tile", "Transpose"])
 
 
 def rewrite_conv2d_with_pad(g, ops):
