@@ -255,6 +255,10 @@ class Test(object):
                     shape_override[k] = list(v.shape)
 
             # run the model with tensorflow
+            LOGDIR = r"C:\Users\zhijxu\Desktop\tensorboard"
+            train_writer = tf.summary.FileWriter(LOGDIR)
+            train_writer.add_graph(sess.graph)
+            train_writer.close()
             if self.skip_tensorflow:
                 print("\ttensorflow", "SKIPPED")
             else:
@@ -272,8 +276,8 @@ class Test(object):
                 else:
                     print("\tNON-CRITICAL, optimizers are not applied successfully")
                 print("\tto_onnx", "OK")
-                if debug:
-                    onnx_graph.dump_graph()
+                #if debug:
+                #    onnx_graph.dump_graph()
                 if onnx_file:
                     self.create_onnx_file(name, model_proto, inputs, onnx_file)
             except Exception as ex:

@@ -2201,9 +2201,9 @@ def rewrite_incomplete_type_support(g, ops, impacted_ops):
 
                 input_name = op.input[i]
                 dtype = g.get_dtype(input_name)
-                if dtype is None:
-                    log.warning("adding Cast for op %s (type is %s)' input: %s, dtype should not be None",
-                                op.name, op.type, input_name)
+                #if dtype is None:
+                #    log.warning("adding Cast for op %s (type is %s)' input: %s, dtype should not be None",
+                #                op.name, op.type, input_name)
 
                 if dtype != onnx_pb.TensorProto.FLOAT:
                     output_dtype = dtype
@@ -2521,8 +2521,8 @@ def process_tf_graph(tf_graph, continue_on_error=False, verbose=False, target=No
 
     if verbose:
         print("tensorflow ops: {}".format(op_cnt))
-        print("tensorflow attr: {}".format(attr_cnt))
-        print("onnx mapped: {}".format(mapped_op))
+        #print("tensorflow attr: {}".format(attr_cnt))
+        #print("onnx mapped: {}".format(mapped_op))
         print("onnx unmapped: {}".format(unmapped_op))
 
     return g
