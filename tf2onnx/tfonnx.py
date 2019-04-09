@@ -1152,6 +1152,15 @@ def topk_op(ctx, node, name, args):
                                   shapes=[shapes[1]], dtypes=[onnx_pb.TensorProto.INT32])
 
 
+def topk_op9(ctx, node, name, args):
+    # onnx only supports input K as a 1D tesor with dtype int64
+    # while in tf, K is a 0D tensor with dtype int32
+    k_0D = node.input[1]
+    cast = ctx.make_node("Cast", [k_0D], attr={"to": onnx_pb.TensorProto.INT64})
+    k_1D = ctx.make_node("Unsqueeze", cast.output, attr={"axes": [0]})
+    ctx.replace_input(node, k_0D, k_1D.output[0])
+
+
 def tile_op7(ctx, node, name, args):
     # onnx wants shape input to be int64
     _convert_shapenode_to_int64(ctx, node, 1)
@@ -1759,7 +1768,7 @@ _OPSET_4 = {
     "Sum": (reduce_op, ["ReduceSum"]),
     "Tanh": (direct_op, []),
     "Transpose": (transpose_op, []),
-    "TopKV2": (topk_op, []),
+    "TopKV2": (topk_op9, ["TopK"]),
     "SpaceToDepth": (reorganize_data_op, []),
     "DepthToSpace": (reorganize_data_op, []),
     "Pack": (pack_op, []),
@@ -1844,12 +1853,9 @@ _OPSET_9 = {
     "Sign": (sign_op9, []),
     "Sinh": (direct_op, []),
     "Where": (where_op, []),
-}
-
-_OPSET_10 = {
-    "TopKV2": (direct_op, ["TopK"]),
     "NonMaxSuppressionV2": (non_max_suppression_op, ["NonMaxSuppression"]),
 }
+
 
 _OPSETS = [
     (4, _OPSET_4),
@@ -1858,7 +1864,6 @@ _OPSETS = [
     (7, _OPSET_7),
     (8, _OPSET_8),
     (9, _OPSET_9),
-    (10, _OPSET_10),
 ]
 
 
