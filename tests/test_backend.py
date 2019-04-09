@@ -845,11 +845,22 @@ class BackendTests(Tf2OnnxBackendTestBase):
         _ = tf.identity(x_, name=_TFOUTPUT)
         self._run_test_case([_OUTPUT], {_INPUT: x_val})
 
-    @unittest.skipIf(*support_op_conversion_since(9, "slice"))
     def test_slice_with_non_const(self):
         x_val = np.array([[1, 2, 3, 4], [5, 6, 7, 8]], dtype=np.float32)
         t1 = np.array([0, 1], dtype=np.int32)
         t2 = np.array([2, 2], dtype=np.int32)
+        x0 = tf.placeholder(tf.float32, x_val.shape, name=_TFINPUT)
+        t1_ = tf.placeholder(tf.int32, t1.shape, name=_TFINPUT1)
+        t2_ = tf.placeholder(tf.int32, t2.shape, name=_TFINPUT2)
+        x_ = tf.slice(x0, t1_, t2_)
+        _ = tf.identity(x_, name=_TFOUTPUT)
+        self._run_test_case([_OUTPUT], {_INPUT: x_val, _INPUT1: t1, _INPUT2: t2})
+
+        tf.reset_default_graph()
+        # test size contains -1
+        x_val = np.array([[1, 2, 3, 4], [5, 6, 7, 8]], dtype=np.float32)
+        t1 = np.array([0, 1], dtype=np.int32)
+        t2 = np.array([2, -1], dtype=np.int32)
         x0 = tf.placeholder(tf.float32, x_val.shape, name=_TFINPUT)
         t1_ = tf.placeholder(tf.int32, t1.shape, name=_TFINPUT1)
         t2_ = tf.placeholder(tf.int32, t2.shape, name=_TFINPUT2)

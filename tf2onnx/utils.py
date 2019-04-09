@@ -409,3 +409,7 @@ def are_shapes_equal(src, dest):
 def create_vague_shape_like(shape):
     make_sure(len(shape) >= 0, "rank should be >= 0")
     return [-1 for i in enumerate(shape)]
+
+
+def get_max_int_val(np_dtype):
+    return np.iinfo(np_dtype).max

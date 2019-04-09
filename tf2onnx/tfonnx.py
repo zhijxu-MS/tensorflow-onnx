@@ -786,16 +786,36 @@ def concatv2_op(ctx, node, name, args):
 def dynamic_slice_op(ctx, node, name, args):
     # tf op, T output = Slice(T input, Index begin, Index size, @type Index)
     # onnx op, T output = DynamicSlice(T input, Tind starts, Tind ends, (optional)Tind axes), ends are exclusive
-
     starts = node.inputs[1]
     size = node.inputs[2]
     if starts.is_const() and size.is_const():
         return slice_op(ctx, node, name, args)
-    ends = ctx.make_node("Add", [starts.output[0], size.output[0]])
+
+    input_tensor = node.inputs[0].output[0]
+    starts = starts.output[0]
+    size = size.output[0]
+    # in tf, size can be -1 which means all elem are taken, so size can't be added starts directly.
+    # the way to make sure size are not less than 0: (size[size==-1])*int_max + size
+    size_dtype = ctx.get_dtype(size)
+    size_np_dtype = utils.map_onnx_to_numpy_type(size_dtype)
+
+    neg_one_val = np.array([-1]).astype(size_np_dtype)
+    neg_one = ctx.make_const(utils.make_name("const"), neg_one_val).output[0]
+
+    int_max_val = np.array([utils.get_max_int_val(size_np_dtype)]).astype(size_np_dtype)
+    int_max = ctx.make_const(utils.make_name("largest_int_val"), int_max_val).output[0]
+
+    # let size are not less than 0
+    size_are_neg_one_flag = ctx.make_node("Equal", [neg_one, size]).output[0]
+    size_are_neg_one_flag = ctx.make_node("Cast", [size_are_neg_one_flag], attr={"to": size_dtype}).output[0]
+    value_to_add = ctx.make_node("Mul", [int_max, size_are_neg_one_flag]).output[0]
+    size_processed = ctx.make_node("Add", [size, value_to_add]).output[0]
+
+    # slice conversion logic
+    ends = ctx.make_node("Add", [starts, size_processed]).output[0]
     ctx.remove_node(node.name)
-    new_slice = ctx.make_node("DynamicSlice", [*node.input[0:2], ends.output[0]],
+    new_slice = ctx.make_node("DynamicSlice", [input_tensor, starts, ends],
                               name=node.name, outputs=node.output)
-    return [ends, new_slice]
 
 
 def slice_op(ctx, node, name, args):
