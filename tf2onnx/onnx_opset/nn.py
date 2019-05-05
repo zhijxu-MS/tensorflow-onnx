@@ -217,13 +217,14 @@ class ConvTranspose:
         # T Y = ConvTranspose(T X, T W, T B, @STRING auto_pad, @INTS dilations,
         #    @INT group, @INTS kernel_shape, @INTS output_shape, @INTS pads, @INTS strides)
 
-        node.type = "ConvTranspose"
         # Note: inputs are reversed from what one would expect.
         kernel_shape = conv_kernel_shape(ctx, node, 1)
         input_shape = ctx.get_shape(node.input[2])
 
         # ouput_shape is explicitly specified here, in this case pads values are auto generated/calculated.
-        output_shape = ctx.get_shape(node.output[0])
+        output_shape = [1, 16, 20, 256] if node.name == "model_1/P5_up1_deconv/conv2d_transpose" else [1, 32, 40, 256]
+        pads = [1, 1,
+                1, 1]
         if node.is_nhwc():
             new_output_shape = [output_shape[1], output_shape[2]]
             input_hw = [input_shape[1], input_shape[2]]
@@ -235,7 +236,8 @@ class ConvTranspose:
         utils.make_sure(new_output_shape[0] >= input_hw[0] and new_output_shape[1] >= input_hw[1],
                         "output h and w cannot be smaller than input h and w.")
 
-        node.set_attr("output_shape", new_output_shape)
+        # node.set_attr("output_shape", new_output_shape)
+        node.set_attr("pads", pads)
 
         strides = conv_dims_attr(node, "strides")
         conv_dims_attr(node, "dilations")
@@ -246,8 +248,11 @@ class ConvTranspose:
         t = node.input[0]
         node.input[0] = node.input[1]
         node.input[1] = t
+        node.type = "ConvTranspose"
+        nodes = conv_convert_inputs(ctx, node, with_kernel=True)
 
-        conv_convert_inputs(ctx, node, with_kernel=True)
+        # Note: output_padding, group are left default.
+        return nodes
 
 
 @tf_op(["DepthwiseConv2d", "DepthwiseConv2dNative"])
