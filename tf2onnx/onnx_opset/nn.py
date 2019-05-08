@@ -208,6 +208,11 @@ class ConvOp:
         dilations = conv_dims_attr(node, "dilations")
         add_padding(ctx, node, kernel_shape, strides, dilations=dilations, spatial=2)
         conv_convert_inputs(ctx, node, with_kernel=True)
+        if node.name == "lambda_1/convolution":
+            ori_input_tensor = node.input[0]
+            pads = ctx.insert_new_node_on_input(node, "Pad", ori_input_tensor, name="workaround_cudnn")
+            pads.set_attr("pads", [0, 0, 0, 0, 0, 0, 1, 1])  # NCHW
+            node.set_attr("auto_pad", "NOTSET")
 
 
 @tf_op("Conv2DBackpropInput")
