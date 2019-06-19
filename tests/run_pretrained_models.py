@@ -412,14 +412,37 @@ def load_tests_from_yaml(path):
     return tests
 
 
+def run_single_test(test_name, tests, args):
+    Test.cache_dir = args.cache
+    Test.target = args.target
+    res = {"test_name": test_name, "success": True, "reason": None}
+    task = tests[test_name]
+    if args.tests is None:
+        if task.disabled and not args.include_disabled:
+            res["success"] = None
+            res["reason"] = "disabled"
+        condition, reason = task.check_opset_constraints(args.opset, args.extra_opset)
+        if not condition:
+            res["success"] = None
+            res["reason"] = reason
+
+    if res["success"] is not None:
+        try:
+            task.run_test(test_name, backend=args.backend, onnx_file=args.onnx_file,
+                          opset=args.opset, extra_opset=args.extra_opset, perf=args.perf,
+                          fold_const=args.fold_const)
+        except Exception:
+            res["success"] = False
+            res["reason"] = "un-convertable or result mismatch"
+    return res
+
+
 def main():
     args = get_args()
     logging.basicConfig(level=logging.get_verbosity_level(args.verbose))
     if args.debug:
         utils.set_debug_mode(True)
 
-    Test.cache_dir = args.cache
-    Test.target = args.target
     tests = load_tests_from_yaml(args.config)
     if args.list:
         logger.info(sorted(tests.keys()))
@@ -429,47 +452,25 @@ def main():
     else:
         test_keys = list(tests.keys())
 
+    import multiprocessing as mp
+    process_pool = mp.Pool(int(mp.cpu_count()/2))
+    task_num = len(test_keys)
+    results = process_pool.starmap(run_single_test, zip(test_keys, [tests]*task_num, [args]*task_num))
     failed = 0
-    count = 0
-    for test in test_keys:
-        logger.info("===================================")
-
-        t = tests[test]
-        if args.tests is None:
-            if t.disabled and not args.include_disabled:
-                logger.info("Skip %s: disabled", test)
-                continue
-
-            condition, reason = t.check_opset_constraints(args.opset, args.extra_opset)
-            if not condition:
-                logger.info("Skip %s: %s", test, reason)
-                continue
-
-        count += 1
-        try:
-            logger.info("Running %s", test)
-            ret = t.run_test(test, backend=args.backend, onnx_file=args.onnx_file,
-                             opset=args.opset, extra_opset=args.extra_opset, perf=args.perf,
-                             fold_const=args.fold_const)
-        except Exception:
-            logger.error("Failed to run %s", test, exc_info=1)
-            ret = None
-        finally:
-            if not utils.is_debug_mode():
-                utils.delete_directory(TEMP_DIR)
-        if not ret:
+    for result in results:
+        if result["success"] is None:
+            logger.info("Skip %s: %s", result["test_name"], result["reason"])
+        elif result["success"] is False:
+            logger.info("Fail %s: %s", result["test_name"], result["reason"])
             failed += 1
+        else:
+            logger.info("Succeed %s", result["test_name"])
+
+    if not utils.is_debug_mode():
+        utils.delete_directory(TEMP_DIR)
 
     logger.info("===================================")
-    logger.info("RESULT: %s failed of %s, backend=%s", failed, count, args.backend)
-
-    if args.perf:
-        with open(args.perf, "w") as f:
-            f.write("test,tensorflow,onnx\n")
-            for test in test_keys:
-                t = tests[test]
-                if t.perf:
-                    f.write("{},{},{}\n".format(test, t.tf_runtime, t.onnx_runtime))
+    logger.info("RESULT: %s failed of %s, backend=%s", failed, len(results), args.backend)
     return failed
 
 
