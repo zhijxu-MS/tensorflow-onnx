@@ -291,6 +291,60 @@ class Test(object):
 
         return False
 
+    def get_tensorflow_result(self, name, fold_const=True):
+        """Run complete test against backend."""
+        # get the model
+        if self.url:
+            _, dir_name = self.download_model()
+            logger.info("Downloaded to %s", dir_name)
+            model_path = os.path.join(dir_name, self.local)
+        else:
+            model_path = self.local
+
+        logger.info("Load model from %s", model_path)
+        input_names = list(self.input_names.keys())
+        outputs = self.output_names
+        if self.model_type in ["checkpoint"]:
+            graph_def, input_names, outputs = loader.from_checkpoint(model_path, input_names, outputs)
+        elif self.model_type in ["saved_model"]:
+            graph_def, input_names, outputs = loader.from_saved_model(model_path, input_names, outputs)
+        else:
+            graph_def, input_names, outputs = loader.from_graphdef(model_path, input_names, outputs)
+
+        # remove unused input names
+        input_names = list(set(input_names).intersection(self.input_names.keys()))
+        graph_def = tf2onnx.tfonnx.tf_optimize(input_names, self.output_names, graph_def, fold_const)
+        if utils.is_debug_mode():
+            utils.save_protobuf(os.path.join(TEMP_DIR, name + "_after_tf_optimize.pb"), graph_def)
+
+        inputs = {}
+        shape_override = {}
+        g = tf.import_graph_def(graph_def, name='')
+        with tf.Session(config=tf.ConfigProto(allow_soft_placement=True), graph=g) as sess:
+            # create the input data
+            for k in input_names:
+                v = self.input_names[k]
+                t = sess.graph.get_tensor_by_name(k)
+                expected_dtype = tf.as_dtype(t.dtype).name
+                if isinstance(v, six.text_type) and v.startswith("np."):
+                    np_value = eval(v)  # pylint: disable=eval-used
+                    if expected_dtype != np_value.dtype:
+                        logger.warning("dtype mismatch for input %s: expected=%s, actual=%s", k, expected_dtype,
+                                       np_value.dtype)
+                    inputs[k] = np_value.astype(expected_dtype)
+                else:
+                    inputs[k] = self.make_input(v).astype(expected_dtype)
+
+            if self.force_input_shape:
+                for k, v in inputs.items():
+                    shape_override[k] = list(v.shape)
+
+            tf_results = []
+            for i in range(run_times):
+                tmp = self.run_tensorflow(sess, inputs)
+                tf_results.append(tmp)
+            return tf_results
+
     def check_opset_constraints(self, opset, extra_opset=None):
         """ Return (condition, reason) tuple, condition is True if constraints are met. """
         if not self.opset_constraints:
@@ -429,8 +483,6 @@ def main():
     else:
         test_keys = list(tests.keys())
 
-    failed = 0
-    count = 0
     for test in test_keys:
         logger.info("===================================")
 
@@ -440,38 +492,11 @@ def main():
                 logger.info("Skip %s: disabled", test)
                 continue
 
-            condition, reason = t.check_opset_constraints(args.opset, args.extra_opset)
-            if not condition:
-                logger.info("Skip %s: %s", test, reason)
-                continue
-
-        count += 1
-        try:
-            logger.info("Running %s", test)
-            ret = t.run_test(test, backend=args.backend, onnx_file=args.onnx_file,
-                             opset=args.opset, extra_opset=args.extra_opset, perf=args.perf,
-                             fold_const=args.fold_const)
-        except Exception:
-            logger.error("Failed to run %s", test, exc_info=1)
-            ret = None
-        finally:
-            if not utils.is_debug_mode():
-                utils.delete_directory(TEMP_DIR)
-        if not ret:
-            failed += 1
-
-    logger.info("===================================")
-    logger.info("RESULT: %s failed of %s, backend=%s", failed, count, args.backend)
-
-    if args.perf:
-        with open(args.perf, "w") as f:
-            f.write("test,tensorflow,onnx\n")
-            for test in test_keys:
-                t = tests[test]
-                if t.perf:
-                    f.write("{},{},{}\n".format(test, t.tf_runtime, t.onnx_runtime))
-    return failed
+        tf_res = t.get_tensorflow_result(test)
+        return tf_res
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    run_times = 3
+    tf_res = main()
+    print("run tensorflow done")
