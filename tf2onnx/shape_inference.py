@@ -26,7 +26,7 @@ def infer_shape(tf_graph, shape_override):
     if shape_override:
         logger.info("Apply shape override:")
         for name, shape in shape_override.items():
-            logger.info("\tSet %s shape to %s", name, shape)
+            logger.debug("\tSet %s shape to %s", name, shape)
             tf_graph.get_tensor_by_name(name).set_shape(shape)
         tf_graph = reload_tf_graph(tf_graph)
 
@@ -158,7 +158,7 @@ def infer_shape_for_op(op):
             logger.debug("set [%s] with new shape %s", op.outputs[0].name, new_shape)
             logger.debug("set [%s] with new shape %s", op.outputs[1].name, new_shape)
             return True
-        logger.warning("infer_shape_for_op for %s fail", op.name)
+        logger.debug("infer_shape_for_op for %s fail", op.name)
         return False
 
     if op.type == "Enter":
@@ -167,7 +167,7 @@ def infer_shape_for_op(op):
             op.outputs[0].set_shape(new_shape)
             logger.debug("set [%s] with new shape %s", op.outputs[0].name, new_shape)
             return True
-        logger.warning("infer_shape_for_op for %s fail", op.name)
+        logger.debug("infer_shape_for_op for %s fail", op.name)
         return False
 
     if op.type == "TensorArrayGatherV3":

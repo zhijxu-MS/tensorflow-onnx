@@ -27,6 +27,7 @@ from tf2onnx.graph_matcher import OpTypePattern, GraphMatcher
 from tf2onnx.rewriter import *  # pylint: disable=wildcard-import
 from tf2onnx.shape_inference import infer_shape
 from tf2onnx.utils import port_name
+from tf2onnx.fold_const_using_tf import const_nodes_and_values_in_tf, repalce_node_with_const
 from . import constants, logging, schemas, utils, handler
 
 logger = logging.getLogger(__name__)
@@ -710,9 +711,13 @@ def process_tf_graph(tf_graph, continue_on_error=False, verbose=False, target=No
         logger.warning("Currently installed onnx package %s is too low to support opset %s, "
                        "please upgrade onnx package to avoid potential conversion issue.",
                        utils.get_onnx_version(), opset)
-
+    # run tensorflow model to get nodes' values that can be const.
+    shape_override = {} if shape_override is None else shape_override
+    const_nodes_value_dict = const_nodes_and_values_in_tf(tf_graph)
+    for name, value in const_nodes_value_dict.items():
+        shape = list(value.shape)
+        shape_override[name] = shape
     tf_graph = infer_shape(tf_graph, shape_override)
-
     if shape_override is None:
         shape_override = {}
     if inputs_as_nchw is None:
@@ -738,7 +743,7 @@ def process_tf_graph(tf_graph, continue_on_error=False, verbose=False, target=No
             raise ValueError("Inputs/Outputs Not Found")
 
     g = Graph(onnx_nodes, output_shapes, dtypes, target, opset, extra_opset, output_names)
-
+    repalce_node_with_const(const_nodes_value_dict, g)
     # create ops mapping for the desired opsets
     ops_mapping = handler.tf_op.create_mapping(g.opset, g.extra_opset)
 
