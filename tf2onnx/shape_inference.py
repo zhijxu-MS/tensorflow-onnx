@@ -158,6 +158,7 @@ def infer_shape_for_op(op):
             logger.debug("set [%s] with new shape %s", op.outputs[0].name, new_shape)
             logger.debug("set [%s] with new shape %s", op.outputs[1].name, new_shape)
             return True
+        logger.warning("infer_shape_for_op for %s fail", op.name)
         return False
 
     if op.type == "Enter":
@@ -166,6 +167,7 @@ def infer_shape_for_op(op):
             op.outputs[0].set_shape(new_shape)
             logger.debug("set [%s] with new shape %s", op.outputs[0].name, new_shape)
             return True
+        logger.warning("infer_shape_for_op for %s fail", op.name)
         return False
 
     if op.type == "TensorArrayGatherV3":
