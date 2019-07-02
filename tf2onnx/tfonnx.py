@@ -614,6 +614,7 @@ def transpose_inputs(ctx, inputs_as_nchw):
 def tf_optimize(inputs, outputs, graph_def, fold_constant=None):
     """Optimize tensorflow graph for inference."""
     transforms = []
+    fold_constant = False
     if fold_constant:
         transforms.extend([
             "fold_constants(ignore_errors=true)",
