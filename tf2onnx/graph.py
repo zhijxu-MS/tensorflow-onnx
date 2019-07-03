@@ -880,8 +880,9 @@ class Graph(object):
                 value = op.inputs[0].get_tensor_value(as_list=False)
                 tensor = numpy_helper.from_array(value, op.output[0])
                 initializers.append(tensor)
-                const_ops.remove(op.inputs[0])
-                ops.remove(op.inputs[0])
+                if self.find_output_consumers(op.inputs[0].output[0]) == 1:
+                    const_ops.remove(op.inputs[0])
+                    ops.remove(op.inputs[0])
 
         # create initializers for constant nodes
         for op in const_ops:
