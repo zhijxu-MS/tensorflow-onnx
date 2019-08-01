@@ -16,6 +16,7 @@ import tarfile
 import time
 import zipfile
 from collections import namedtuple
+import datetime
 
 import PIL.Image
 import numpy as np
@@ -35,7 +36,7 @@ from tf2onnx.tfonnx import process_tf_graph
 logger = logging.getLogger("run_pretrained")
 
 TEMP_DIR = os.path.join(utils.get_temp_directory(), "run_pretrained")
-PERFITER = 1000
+PERFITER = 20
 
 
 def get_beach(shape):
@@ -184,9 +185,9 @@ class Test(object):
 
     @staticmethod
     def create_onnx_file(name, model_proto, inputs, outdir):
-        os.makedirs(outdir, exist_ok=True)
-        model_path = os.path.join(outdir, name + ".onnx")
-        utils.save_protobuf(model_path, model_proto)
+        os.makedirs("onnx_graph", exist_ok=True)
+        model_path = os.path.join("onnx_graph", test_name + ".onnx")
+        utils.save_protobuf(model_path, model_proto, as_text=False)
         logger.info("Created %s", model_path)
 
     def run_test(self, name, backend="caffe2", onnx_file=None, opset=None, extra_opset=None,
@@ -205,6 +206,7 @@ class Test(object):
         logger.info("Load model from %s", model_path)
         input_names = list(self.input_names.keys())
         outputs = self.output_names
+        load_tf_beg = datetime.datetime.now()
         if self.model_type in ["checkpoint"]:
             graph_def, input_names, outputs = loader.from_checkpoint(model_path, input_names, outputs)
         elif self.model_type in ["saved_model"]:
@@ -215,14 +217,13 @@ class Test(object):
         # remove unused input names
         input_names = list(set(input_names).intersection(self.input_names.keys()))
         graph_def = tf2onnx.tfonnx.tf_optimize(input_names, self.output_names, graph_def, fold_const)
-        if utils.is_debug_mode():
-            utils.save_protobuf(os.path.join(TEMP_DIR, name + "_after_tf_optimize.pb"), graph_def)
 
         inputs = {}
         shape_override = {}
         g = tf.import_graph_def(graph_def, name='')
         with tf.Session(config=tf.ConfigProto(allow_soft_placement=True), graph=g) as sess:
             # create the input data
+            self.load_tf_time = (datetime.datetime.now() - load_tf_beg).total_seconds()  # time unit is ms.
             for k in input_names:
                 v = self.input_names[k]
                 t = sess.graph.get_tensor_by_name(k)
@@ -250,13 +251,19 @@ class Test(object):
             model_proto = None
             try:
                 # convert model to onnx
+                convert_beg = datetime.datetime.now()
                 onnx_graph = self.to_onnx(sess.graph, opset=opset, extra_opset=extra_opset,
                                           shape_override=shape_override, input_names=inputs.keys())
                 onnx_graph = optimizer.optimize_graph(onnx_graph)
                 model_proto = onnx_graph.make_model("converted from tf2onnx")
+                self.convert_to_onnx_time = (datetime.datetime.now() - convert_beg).total_seconds()
                 logger.info("To_ONNX, OK")
-                if onnx_file:
-                    self.create_onnx_file(name, model_proto, inputs, onnx_file)
+
+                save_beg = datetime.datetime.now()
+                self.create_onnx_file(name, model_proto, inputs, onnx_file)
+                self.save_onnx_graph_time = (datetime.datetime.now() - save_beg).total_seconds()
+
+                self.total_conversion_time = self.load_tf_time + self.convert_to_onnx_time + self.save_onnx_graph_time
             except Exception:
                 logger.error("To_ONNX FAIL", exc_info=1)
                 return False
@@ -412,6 +419,7 @@ def load_tests_from_yaml(path):
         tests[name] = test
     return tests
 
+test_name = None
 
 def main():
     args = get_args()
@@ -449,6 +457,8 @@ def main():
         count += 1
         try:
             logger.info("Running %s", test)
+            global  test_name
+            test_name = test
             ret = t.run_test(test, backend=args.backend, onnx_file=args.onnx_file,
                              opset=args.opset, extra_opset=args.extra_opset, perf=args.perf,
                              fold_const=args.fold_const)
@@ -465,12 +475,14 @@ def main():
     logger.info("RESULT: %s failed of %s, backend=%s", failed, count, args.backend)
 
     if args.perf:
-        with open(args.perf, "w") as f:
-            f.write("test,tensorflow,onnx\n")
+        with open(args.perf, "a") as f:
             for test in test_keys:
                 t = tests[test]
                 if t.perf:
-                    f.write("{},{},{}\n".format(test, t.tf_runtime, t.onnx_runtime))
+                    f.write("{}: {},{},{},{},{},{}\n".
+                            format(test, t.load_tf_time, t.convert_to_onnx_time, t.save_onnx_graph_time, t.total_conversion_time,
+                                   t.tf_runtime, t.onnx_runtime, ))
+                    f.flush()
     return failed
 
 
