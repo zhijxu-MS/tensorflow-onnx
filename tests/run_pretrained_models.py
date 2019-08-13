@@ -236,6 +236,14 @@ class Test(object):
                     inputs[k] = np_value.astype(expected_dtype)
                 else:
                     inputs[k] = self.make_input(v).astype(expected_dtype)
+                skip_model_list = ["deepthink", "char-rnn", "doran", "doran-part"]
+                if t.shape and len(t.shape.as_list()) >=1 and t.shape.as_list()[0] is None \
+                   and name not in skip_model_list:
+                    inputs[k] = np.repeat(inputs[k], 10, axis=0)
+                    self.batch_size = 10
+                else:
+                    self.batch_size = None
+
 
             if self.force_input_shape:
                 for k, v in inputs.items():
@@ -478,7 +486,7 @@ def main():
         with open(args.perf, "a") as f:
             for test in test_keys:
                 t = tests[test]
-                if t.perf:
+                if t.perf and t.batch_size is not None:
                     f.write("{}: {},{},{},{},{},{}\n".
                             format(test, t.load_tf_time, t.convert_to_onnx_time, t.save_onnx_graph_time, t.total_conversion_time,
                                    t.tf_runtime, t.onnx_runtime, ))
