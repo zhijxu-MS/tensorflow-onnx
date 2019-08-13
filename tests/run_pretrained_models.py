@@ -272,6 +272,7 @@ class Test(object):
             logger.info("Run_ONNX OK")
 
             try:
+                return True
                 if self.skip_tensorflow:
                     logger.info("Results: skipped tensorflow")
                 else:
