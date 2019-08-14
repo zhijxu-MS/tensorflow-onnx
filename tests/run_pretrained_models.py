@@ -239,8 +239,8 @@ class Test(object):
                 skip_model_list = ["deepthink", "char-rnn", "doran", "doran-part"]
                 if t.shape and len(t.shape.as_list()) >=1 and t.shape.as_list()[0] is None \
                    and name not in skip_model_list:
-                    inputs[k] = np.repeat(inputs[k], 10, axis=0)
-                    self.batch_size = 10
+                    inputs[k] = np.repeat(inputs[k], 20, axis=0)
+                    self.batch_size = 20
                 else:
                     self.batch_size = None
 
