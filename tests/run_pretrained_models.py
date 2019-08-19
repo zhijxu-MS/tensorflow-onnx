@@ -224,6 +224,7 @@ class Test(object):
         with tf.Session(config=tf.ConfigProto(allow_soft_placement=True), graph=g) as sess:
             # create the input data
             self.load_tf_time = (datetime.datetime.now() - load_tf_beg).total_seconds()  # time unit is ms.
+            input_names = sorted(input_names)
             for k in input_names:
                 v = self.input_names[k]
                 t = sess.graph.get_tensor_by_name(k)
