@@ -144,9 +144,13 @@ class Test(object):
             feed_dict[k] = v
         result = sess.run(self.output_names, feed_dict=feed_dict)
         if self.perf:
+            self.tf_times = []
             start = time.time()
             for _ in range(PERFITER):
+                one_run_beg = time.time()
                 _ = sess.run(self.output_names, feed_dict=feed_dict)
+                one_run_time_lapse = time.time() - one_run_beg
+                self.tf_times.append(one_run_time_lapse)
             self.tf_runtime = time.time() - start
         return result
 
@@ -177,9 +181,13 @@ class Test(object):
         m = rt.InferenceSession(model_path)
         results = m.run(self.output_names, inputs)
         if self.perf:
+            self.ort_times = []
             start = time.time()
             for _ in range(PERFITER):
+                one_run_beg = time.time()
                 _ = m.run(self.output_names, inputs)
+                one_run_time_lapse = time.time() - one_run_beg
+                self.ort_times.append(one_run_time_lapse)
             self.onnx_runtime = time.time() - start
         return results
 
@@ -483,6 +491,8 @@ def main():
                     f.write("{}: {},{},{},{},{},{}\n".
                             format(test, t.load_tf_time, t.convert_to_onnx_time, t.save_onnx_graph_time, t.total_conversion_time,
                                    t.tf_runtime, t.onnx_runtime, ))
+                    f.flush()
+                    f.write("{}\n{}\n".format(t.tf_times, t.ort_times))
                     f.flush()
     return failed
 
