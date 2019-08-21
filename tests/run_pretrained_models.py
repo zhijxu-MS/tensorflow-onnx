@@ -178,8 +178,11 @@ class Test(object):
         model_path = utils.save_onnx_model(TEMP_DIR, name, inputs, model_proto, include_test_data=True,
                                            as_text=utils.is_debug_mode())
         logger.info("Model saved to %s", model_path)
-        m = rt.InferenceSession(model_path)
+        session_option = rt.SessionOptions()
+        session_option.session_thread_pool_size = 1
+        m = rt.InferenceSession(model_path, session_option)
         results = m.run(self.output_names, inputs)
+        logger.info("start perf")
         if self.perf:
             self.ort_times = []
             start = time.time()
