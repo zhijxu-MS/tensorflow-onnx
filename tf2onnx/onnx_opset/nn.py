@@ -318,6 +318,8 @@ class ConvTranspose:
         conv_convert_inputs(ctx, node, with_kernel=True)
         node.attr.pop("data_format")
         node.attr.pop("padding")
+        if "explicit_paddings" in node.attr:
+            node.attr.pop("explicit_paddings")
 
 
 @tf_op(["DepthwiseConv2d", "DepthwiseConv2dNative"])
